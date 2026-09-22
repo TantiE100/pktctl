@@ -180,12 +180,12 @@ impl ApiIndex {
 
     pub fn register_data_layouts() {
         let api = Self::get();
-        ptmp::data::register(
-            api.data
-                .iter()
-                .filter(|(_, layout)| !layout.variable)
-                .map(|(class, layout)| (class.clone(), layout.fields.len())),
-        );
+        ptmp::data::register(api.data.iter().map(|(class, layout)| {
+            (
+                class.clone(),
+                (!layout.variable).then_some(layout.fields.len()),
+            )
+        }));
     }
 
     pub fn class_named(&self, wire_name: &str) -> Option<&str> {
@@ -322,6 +322,19 @@ mod tests {
             .collect();
         assert_eq!(names, ["strID", "description", "isOSIIn", "OSILayerNumber"]);
         assert!(!node.variable);
+
+        let a_record = &ApiIndex::get().data["DnsRrA"];
+        let names: Vec<&str> = a_record
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert_eq!(
+            names.first(),
+            Some(&"name"),
+            "fields inherited through super.read come first"
+        );
+        assert_eq!(names.last(), Some(&"ipAddress"));
     }
 
     #[test]

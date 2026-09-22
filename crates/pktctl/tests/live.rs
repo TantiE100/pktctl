@@ -553,3 +553,79 @@ async fn joins_a_wpa2_network() {
     ok(&mut client, "open_network", json!({ "path": saved })).await;
     std::fs::remove_file(saved).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn serves_dhcp_and_dns_to_a_pc() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "Server-PT", "name": "E2E-SRV" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2960-24TT", "name": SWITCH }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "PC-PT", "name": PC_A }),
+    )
+    .await;
+    for (device, port) in [("E2E-SRV", "FastEthernet0/1"), (PC_A, "FastEthernet0/2")] {
+        ok(
+            &mut client,
+            "connect",
+            json!({ "device_a": SWITCH, "port_a": port, "device_b": device, "port_b": "FastEthernet0" }),
+        )
+        .await;
+    }
+    ok(
+        &mut client,
+        "configure_host",
+        json!({ "device": "E2E-SRV", "ip": "192.168.60.5", "mask": "255.255.255.0", "gateway": "192.168.60.1" }),
+    )
+    .await;
+    let dhcp = ok(
+        &mut client,
+        "configure_dhcp_server",
+        json!({ "device": "E2E-SRV", "pools": [{ "name": "serverPool", "gateway": "192.168.60.1",
+                "start_ip": "192.168.60.100", "mask": "255.255.255.0", "dns": "192.168.60.5", "max_users": 20 }] }),
+    )
+    .await;
+    assert_eq!(dhcp["enabled"], true);
+    ok(
+        &mut client,
+        "configure_dns_server",
+        json!({ "device": "E2E-SRV", "records": [{ "name": "www.e2e.bo", "type": "A", "value": "192.168.60.5" }] }),
+    )
+    .await;
+    ok(&mut client, "fast_forward", json!({})).await;
+    let lease = ok(
+        &mut client,
+        "configure_host",
+        json!({ "device": PC_A, "dhcp": true }),
+    )
+    .await;
+    let leased = lease["ip"].as_str().unwrap_or_default().to_owned();
+    assert!(leased.starts_with("192.168.60."), "{lease}");
+    let resolved = ok(
+        &mut client,
+        "run_host_command",
+        json!({ "device": PC_A, "command": "ping -n 1 www.e2e.bo" }),
+    )
+    .await;
+    assert!(
+        resolved["output"]
+            .as_str()
+            .unwrap()
+            .contains("192.168.60.5"),
+        "{resolved}"
+    );
+    remove_leftovers(&mut client).await;
+}
