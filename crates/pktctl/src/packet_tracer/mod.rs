@@ -45,7 +45,7 @@ pub enum PtError {
     #[error("{0} not found")]
     NotFound(String),
     #[error(
-        "{0}; register the ExApp again with every privilege listed in docs/features/pktctl-exapp.xml"
+        "{0}; call setup_exapp and register the new pktctl.pta, which grants every privilege pktctl uses"
     )]
     MissingPrivilege(String),
     #[error("Packet Tracer sent an unexpected reply: {0}")]
@@ -135,11 +135,7 @@ mod tests {
             class: "AppWindow".into(),
             message: r#"ExApp or Script Module does not have the necessary privilege for IPC call "fileOpen""#.into(),
         };
-        assert!(
-            PtError::from(denied)
-                .to_string()
-                .contains("pktctl-exapp.xml")
-        );
+        assert!(PtError::from(denied).to_string().contains("setup_exapp"));
     }
 
     #[test]

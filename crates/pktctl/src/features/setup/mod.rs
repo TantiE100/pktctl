@@ -10,7 +10,7 @@ use crate::{
     server::PktctlServer,
 };
 
-const TEMPLATE: &str = include_str!("../../../../../docs/features/pktctl-exapp.xml");
+const TEMPLATE: &str = include_str!("../../../assets/pktctl-exapp.xml");
 const TEMPLATE_ID: &str = "<ID>dev.pktctl</ID>";
 const TEMPLATE_KEY: &str = "<KEY>REPLACE_WITH_YOUR_SECRET</KEY>";
 const PTA_FILE: &str = "pktctl.pta";

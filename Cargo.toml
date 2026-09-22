@@ -8,10 +8,12 @@ edition = "2024"
 rust-version = "1.88"
 license = "MIT"
 authors = ["Santi E. <santy10mcpe@gmail.com>"]
+keywords = ["packet-tracer", "cisco", "mcp", "networking"]
+categories = ["network-programming", "simulation"]
 
 [workspace.dependencies]
-ptmp = { path = "crates/ptmp" }
-pktfile = { path = "crates/pktfile" }
+ptmp = { path = "crates/ptmp", version = "0.1.0" }
+pktfile = { path = "crates/pktfile", version = "0.1.0" }
 futures = "0.3"
 md-5 = "0.11"
 rmcp = { version = "3.4", features = ["server", "transport-io", "macros"] }
