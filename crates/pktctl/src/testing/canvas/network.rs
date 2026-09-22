@@ -81,6 +81,23 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
         "getCenterYCoordinate" => getter().map(|()| Value::Double(state.devices[index].y)),
         "getPortCount" => getter().map(|()| count(state.devices[index].ports.len())),
         "skipBoot" if ios => getter().map(|()| Value::Void),
+        "enterCommand" if ios => {
+            check_args(step, class, &[TypeCode::String, TypeCode::String])?;
+            let command = step.args[0].as_str().unwrap_or_default().to_owned();
+            let mode = step.args[1].as_str().unwrap_or_default().to_owned();
+            let (status, output) = if command.starts_with("bogus") {
+                (2, "\n")
+            } else if command == "write memory" {
+                (0, "Building configuration...\n[OK]\n\n")
+            } else {
+                (0, "\n")
+            };
+            state.devices[index].cli.push((mode, command));
+            Ok(Value::Pair(
+                Box::new(Value::Int(status)),
+                Box::new(Value::string(output)),
+            ))
+        }
         "setDhcpFlag" if !ios => {
             check_args(step, class, &[TypeCode::Bool])?;
             if step.args[0].as_bool() == Some(true) {
