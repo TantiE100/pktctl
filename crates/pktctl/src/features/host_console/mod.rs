@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::{
-    features::terminal::{self, Terminal, TerminalRun},
+    features::terminal::{self, Interrupt, Terminal, TerminalRun},
     packet_tracer::{PacketTracer, PtError},
     server::PktctlServer,
 };
@@ -36,7 +36,7 @@ pub async fn run<P: PacketTracer>(
     let prompt = Call::root("network")
         .method("getDevice", [Value::qstring(device)])
         .method("getCommandPrompt", []);
-    let terminal = Terminal::open(packet_tracer, prompt)
+    let terminal = Terminal::open(packet_tracer, prompt, Interrupt::CtrlC)
         .await
         .map_err(explain_non_hosts)?;
     terminal.run(command, timeout).await
@@ -59,8 +59,9 @@ impl<P: PacketTracer> PktctlServer<P> {
         name = "run_host_command",
         description = "Run a command in the Command Prompt of a PC, laptop or server \
                        (ping, ipconfig, tracert, nslookup, arp -a) and return its output. \
-                       Waits until the command finishes or `timeout_secs` elapses; \
-                       `finished: false` means it was still running.",
+                       Waits until the command finishes; a command still running after \
+                       `timeout_secs` (ping -t) is stopped with Ctrl+C and comes back with \
+                       `finished: false` and the output so far.",
         annotations(read_only_hint = false, open_world_hint = false)
     )]
     async fn run_host_command_tool(
@@ -207,12 +208,26 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn returns_partial_output_when_the_command_outlives_the_timeout() {
-        let packet_tracer = pc(|emitter| emitter.emit(written("Tracing route...\n")));
+    async fn interrupts_commands_that_outlive_the_timeout() {
+        let packet_tracer =
+            ScriptedPacketTracer::with_events(|call, emitter| match methods(call).as_slice() {
+                [.., "getObjectUuid"] => Ok(Value::Uuid(TERMINAL_ID.into())),
+                [.., "enterCommand"] => {
+                    emitter.emit(written("Reply from 10.0.0.2\n"));
+                    Ok(Value::Void)
+                }
+                [.., "enterChar"] => {
+                    assert_eq!(call.steps()[3].args, [Value::Byte(3), Value::Int(0)]);
+                    emitter.emit(written("^C\n"));
+                    emitter.emit(ended(0));
+                    Ok(Value::Void)
+                }
+                other => panic!("unexpected call {other:?}"),
+            });
         let result = run(&packet_tracer, &request(Some(5))).await.unwrap();
         assert!(!result.finished);
         assert_eq!(result.status, None);
-        assert_eq!(result.output, "Tracing route...\n");
+        assert_eq!(result.output, "Reply from 10.0.0.2\n^C\n");
     }
 
     #[tokio::test]

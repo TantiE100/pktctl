@@ -25,8 +25,9 @@ Runs commands in the Command Prompt of end devices (PCs, laptops, servers):
 }
 ```
 
-`finished: false` means the timeout elapsed first; `output` then holds what the
-command printed so far. Routers and switches have no Command Prompt; the error
+`finished: false` means the timeout elapsed first: the tool pressed Ctrl+C,
+exactly like a user stopping `ping -t`, and `output` holds everything printed
+until then. The console is free again for the next command. Routers and switches have no Command Prompt; the error
 points to `run_cli`.
 
 ## How it works
@@ -52,5 +53,8 @@ helper, also used by `run_cli` for IOS consoles:
 Events for other terminals are ignored, so two agents can use different PCs at
 the same time.
 
-A command still running when `timeout_secs` elapses (for example `ping -t`)
-keeps the console busy; later commands on that PC wait behind it.
+When `timeout_secs` elapses the helper sends the interrupt key through
+`enterChar` (3, Ctrl+C, on hosts; 30, Ctrl+Shift+6, on IOS) and gathers output
+for up to three more seconds, so a runaway command never blocks the next one.
+The ` --More-- ` text printed before each `moreDisplayed` is removed from
+`output`.

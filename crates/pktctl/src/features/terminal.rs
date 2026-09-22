@@ -15,6 +15,8 @@ const COMMAND_ENDED: &str = "commandEnded";
 const MORE_DISPLAYED: &str = "moreDisplayed";
 const SPACE: i8 = 32;
 const NO_SPECIAL_CHAR: i32 = 0;
+const MORE_MARKER: &str = "--More--";
+const INTERRUPT_GRACE: Duration = Duration::from_secs(3);
 pub(crate) const DEFAULT_TIMEOUT_SECS: u64 = 30;
 pub(crate) const MAX_TIMEOUT_SECS: u64 = 300;
 
@@ -36,14 +38,34 @@ pub(crate) fn timeout(requested: Option<u64>) -> Result<Duration, PtError> {
     Ok(Duration::from_secs(secs))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Interrupt {
+    CtrlC,
+    CtrlShift6,
+}
+
+impl Interrupt {
+    fn byte(self) -> i8 {
+        match self {
+            Self::CtrlC => 3,
+            Self::CtrlShift6 => 30,
+        }
+    }
+}
+
 pub(crate) struct Terminal<'a, P> {
     packet_tracer: &'a P,
     line: Call,
     id: String,
+    interrupt: Interrupt,
 }
 
 impl<'a, P: PacketTracer> Terminal<'a, P> {
-    pub(crate) async fn open(packet_tracer: &'a P, line: Call) -> Result<Self, PtError> {
+    pub(crate) async fn open(
+        packet_tracer: &'a P,
+        line: Call,
+        interrupt: Interrupt,
+    ) -> Result<Self, PtError> {
         let id = packet_tracer
             .call(line.clone().method("getObjectUuid", []))
             .await?;
@@ -51,6 +73,7 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             packet_tracer,
             id: expect_text(&id, "terminal id")?,
             line,
+            interrupt,
         })
     }
 
@@ -89,6 +112,10 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             Ok(_) => self.collect(&mut events, timeout).await,
             Err(error) => Err(error),
         };
+        let outcome = match outcome {
+            Ok(run) if !run.finished => self.interrupt(&mut events, run.output).await,
+            other => other,
+        };
 
         for subscription in subscriptions {
             if let Err(error) = self.packet_tracer.unsubscribe(subscription).await {
@@ -101,13 +128,33 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
         })
     }
 
+    async fn interrupt(&self, events: &mut Events, output: String) -> Result<TerminalRun, PtError> {
+        self.press(self.interrupt.byte()).await?;
+        let rest = self
+            .collect_into(events, INTERRUPT_GRACE, String::new())
+            .await?;
+        Ok(TerminalRun {
+            finished: false,
+            status: None,
+            output: output + &rest.output,
+        })
+    }
+
     async fn collect(
         &self,
         events: &mut Events,
         timeout: Duration,
     ) -> Result<TerminalRun, PtError> {
+        self.collect_into(events, timeout, String::new()).await
+    }
+
+    async fn collect_into(
+        &self,
+        events: &mut Events,
+        timeout: Duration,
+        mut output: String,
+    ) -> Result<TerminalRun, PtError> {
         let deadline = Instant::now() + timeout;
-        let mut output = String::new();
         loop {
             let event = match tokio::time::timeout_at(deadline, events.recv()).await {
                 Err(_) => {
@@ -133,7 +180,10 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             }
             match event.name.as_str() {
                 OUTPUT_WRITTEN => output.push_str(first_text(&event)?),
-                MORE_DISPLAYED => self.next_page().await?,
+                MORE_DISPLAYED => {
+                    drop_more_marker(&mut output);
+                    self.press(SPACE).await?;
+                }
                 COMMAND_ENDED => {
                     return Ok(TerminalRun {
                         finished: true,
@@ -146,14 +196,22 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
         }
     }
 
-    async fn next_page(&self) -> Result<(), PtError> {
+    async fn press(&self, key: i8) -> Result<(), PtError> {
         self.packet_tracer
-            .call(self.line.clone().method(
-                "enterChar",
-                [Value::Byte(SPACE), Value::Int(NO_SPECIAL_CHAR)],
-            ))
+            .call(
+                self.line
+                    .clone()
+                    .method("enterChar", [Value::Byte(key), Value::Int(NO_SPECIAL_CHAR)]),
+            )
             .await
             .map(drop)
+    }
+}
+
+fn drop_more_marker(output: &mut String) {
+    if let Some(before) = output.trim_end().strip_suffix(MORE_MARKER) {
+        let kept = before.trim_end_matches(' ').len();
+        output.truncate(kept);
     }
 }
 
@@ -229,6 +287,16 @@ mod tests {
         );
         assert_eq!(without_echo("ipconfig", "ipconfig"), "");
         assert_eq!(without_echo("\nRouter#hw\n", "shw"), "\nRouter#hw\n");
+    }
+
+    #[test]
+    fn drops_the_more_prompt_text() {
+        let mut output = "line vty 0 4\n!\n --More-- ".to_owned();
+        drop_more_marker(&mut output);
+        assert_eq!(output, "line vty 0 4\n!\n");
+        let mut untouched = "no pages here\n".to_owned();
+        drop_more_marker(&mut untouched);
+        assert_eq!(untouched, "no pages here\n");
     }
 
     #[test]

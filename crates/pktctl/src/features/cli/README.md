@@ -28,7 +28,8 @@ IOS on routers and switches: single commands and whole configuration blocks.
 `status` is IOS's verdict on the command: `ok`, `ambiguous`, `invalid`,
 `incomplete` or `not_implemented`. A rejected command is still a successful
 tool call; the agent reads `status` to correct itself. `finished: false` means
-the command was still running when `timeout_secs` elapsed.
+the command was still running when `timeout_secs` elapsed; the tool stopped it
+with Ctrl+Shift+6, the IOS escape sequence, so the console is free again.
 
 The command is typed at the device's real console, the one in the CLI tab, so
 commands that print over time (`ping`, `traceroute`) come back complete, long

@@ -13,7 +13,7 @@ use crate::{
     features::{
         devices::{describe, ready_console},
         paths::device,
-        terminal::{self, Terminal, TerminalRun},
+        terminal::{self, Interrupt, Terminal, TerminalRun},
     },
     packet_tracer::{
         CommandStatus, PacketTracer, PtError, expect_integer, expect_text, kinds::runs_ios,
@@ -89,6 +89,7 @@ pub async fn run<P: PacketTracer>(
     let console = Terminal::open(
         packet_tracer,
         device(device_name).method("getCommandLine", []),
+        Interrupt::CtrlShift6,
     )
     .await?;
     switch_mode(&console, request.mode).await?;
@@ -205,8 +206,9 @@ impl<P: PacketTracer> PktctlServer<P> {
         name = "run_cli",
         description = "Type one IOS command at the console of a router or switch and return \
                        its output, including commands that take time such as ping or \
-                       traceroute. `status` tells whether IOS accepted the command; \
-                       `finished: false` means it was still running after `timeout_secs`.",
+                       traceroute. `status` tells whether IOS accepted the command. A command \
+                       still running after `timeout_secs` is stopped with Ctrl+Shift+6 and \
+                       comes back with `finished: false` and the output so far.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -358,6 +360,12 @@ mod tests {
         .unwrap();
         assert!(!result.finished);
         assert_eq!(result.status, None);
+        assert_eq!(result.output, "waiting forever\n\n");
+
+        let next = run(&packet_tracer, &request("show clock", CliMode::Enable))
+            .await
+            .unwrap();
+        assert!(next.finished, "the interrupt must free the console");
     }
 
     #[tokio::test]
