@@ -43,6 +43,7 @@ canvas first so the mismatch stays covered.
 ```bash
 export PKTCTL_APP_ID=dev.pktctl
 export PKTCTL_SECRET='the KEY from your registration'
+export PKTCTL_TEST_PKT=~/lab.pkt   # optional: any .pkt saved by Packet Tracer
 make e2e-live
 ```
 
@@ -55,6 +56,10 @@ What the live suite does to the open network:
   `configure_ios` and `configure_host`, pings PC to gateway, PC to PC and router
   to PC, adds a note and takes a screenshot. Every device is named `E2E-*` and
   removed at the end; leftovers from an interrupted run are removed first.
+- `pktfile`: with `PKTCTL_TEST_PKT` set, decodes that file and re-encodes it,
+  which is the only test that needs a file saved by Packet Tracer. This
+  repository ships none, so the two tests in `crates/pktfile/tests/real_files.rs`
+  fail without the variable.
 - `files_round_trip_without_dialogs`: saves the open network to a temporary
   file, clears the canvas, saves and reopens a one-router network, then opens
   the saved network again. It needs the `FILE` privilege, which the pktctl

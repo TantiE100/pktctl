@@ -24,7 +24,7 @@ lint: ## Clippy (pedantic) with warnings as errors
 test: ## Unit tests and E2E tests against the in-process fake Packet Tracer
 	$(CARGO) test --workspace --all-features
 
-e2e-live: ## E2E tests against a real Packet Tracer (needs PKTCTL_APP_ID and PKTCTL_SECRET)
+e2e-live: ## E2E tests against a real Packet Tracer (needs PKTCTL_APP_ID, PKTCTL_SECRET and PKTCTL_TEST_PKT)
 	@test -n "$$PKTCTL_APP_ID" && test -n "$$PKTCTL_SECRET" || { echo "set PKTCTL_APP_ID and PKTCTL_SECRET first"; exit 1; }
 	$(CARGO) test --workspace --all-features -- --ignored --test-threads=1
 
