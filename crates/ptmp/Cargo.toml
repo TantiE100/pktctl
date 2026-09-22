@@ -1,0 +1,28 @@
+[package]
+name = "ptmp"
+description = "Async client for the Packet Tracer Messaging Protocol (PTMP) and its IPC layer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+fake = []
+
+[dependencies]
+bytes = "1"
+futures = { workspace = true }
+md-5 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+ptmp = { workspace = true, features = ["fake"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
