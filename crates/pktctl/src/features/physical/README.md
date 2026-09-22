@@ -54,23 +54,26 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
   device moves, so `list_locations` reports devices by their current device
   name (`getDevice().getName()`).
 
-## Editing the saved file
+## Editing the network file
 
 `rename_location` and `add_building` do what the IPC API cannot by editing the
-network file with the [pktfile](../../../../pktfile/README.md) crate:
+network with the [pktfile](../../../../pktfile/README.md) crate:
 
-1. Save the network to its current file, or to a temporary file if it was
-   never saved. The reply names the file.
-2. Decode the `.pkt`, find the location by `UUID_STR` (the persistent id that
+1. Take the open network as `.pkt` bytes with `AppWindow.fileSaveToBytes`.
+   Nothing is written to disk and the open file is not saved.
+2. Decode them, find the location by `UUID_STR` (the persistent id that
    `getPathUuid()` returns), and change only that node: its `NAME` text, or a
    new building `NODE` inside the city's `CHILDREN`. New buildings copy the
    defaults of the building in an empty Packet Tracer 9.0.1 network.
-3. Encode the file and reopen it with `fileOpen`.
+3. Write the result to a new temporary file and open it with `fileOpen`.
 4. Remove the Power Distribution Devices that Packet Tracer adds on every
    open (one per rack), keeping every device that existed before.
 
-The network therefore ends up saved. The file has to be readable by pktctl, so
-these two tools need pktctl on the same computer as Packet Tracer.
+**Your own file is never written.** Packet Tracer ends up with the temporary
+copy open, and the reply's `file` names it; there is no IPC call to point the
+open network back at your file, so keep the change with `save_network` and
+the path you want. The temporary file must be on the computer that runs
+Packet Tracer, so these tools need pktctl there too.
 
 ## IPC calls
 

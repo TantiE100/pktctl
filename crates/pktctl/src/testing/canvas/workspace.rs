@@ -33,6 +33,12 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             Ok(Value::Void)
         }
         ["isPhysicalMode"] => Ok(Value::Bool(state.physical_mode)),
+        ["fileSaveToBytes"] => {
+            state.exported = Some(state.snapshot());
+            Ok(Value::Bytes(
+                pktfile::encode(&state.document()).expect("canvas XML encodes"),
+            ))
+        }
         [
             "getRealtimeToolbar",
             button @ ("fastForwardTime" | "resetNetwork"),
@@ -78,7 +84,13 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             let on_disk = std::fs::read(&path)
                 .ok()
                 .map(|bytes| pktfile::decode(&bytes));
-            match (state.files.get(&path).cloned(), on_disk) {
+            let remembered = state.files.get(&path).cloned().or_else(|| {
+                on_disk
+                    .as_ref()
+                    .filter(|decoded| decoded.is_ok())
+                    .and_then(|_| state.exported.clone())
+            });
+            match (remembered, on_disk) {
                 (_, Some(Err(_))) => Ok(Value::Int(3)),
                 (Some(network), on_disk) => {
                     state.restore(network);
@@ -108,7 +120,7 @@ pub(super) fn files(state: &State, steps: &[Step]) -> Result<Value, Remote> {
     let path = qstring_arg(step, CLASS)?;
     let exists = state.files.contains_key(path);
     match step.method.as_str() {
-        "fileExists" => Ok(Value::Bool(exists)),
+        "fileExists" => Ok(Value::Bool(exists || std::path::Path::new(path).is_file())),
         "getFileSize" => Ok(Value::Int(if exists { 4096 } else { -1 })),
         other => Err(Remote::unknown_method(CLASS, other)),
     }

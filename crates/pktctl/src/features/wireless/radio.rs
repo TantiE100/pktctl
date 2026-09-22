@@ -138,7 +138,8 @@ pub struct WirelessConnection {
     /// Address of the wireless port; with DHCP, the lease if one arrived.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<String>,
-    /// The file the network was saved to, edited and reopened from.
+    /// The temporary copy Packet Tracer now has open. Your own file is untouched: save
+    /// with `save_network` and a path to keep the change there.
     pub file: String,
 }
 

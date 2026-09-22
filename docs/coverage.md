@@ -51,8 +51,9 @@ What the API does not offer, and how pktctl handles it:
 
 | Need | In the IPC API? | pktctl |
 |---|---|---|
-| Rename a physical location, create a building | No | `rename_location`, `add_building` edit the saved `.pkt` and reopen it. |
-| Connect a wireless client to a chosen network | `setCurrentProfile` exists but fails in 9.0.1, and clients only associate when their radio starts | `connect_wireless` writes the client's current profile into the saved `.pkt` and reopens it. |
+| Rename a physical location, create a building | No | `rename_location`, `add_building` take the network as bytes (`fileSaveToBytes`), edit them and open the result as a temporary copy; your file is never written. |
+| Connect a wireless client to a chosen network | `setCurrentProfile` exists but fails in 9.0.1, and clients only associate when their radio starts | `connect_wireless` does the same with the client's current profile. |
+| Point the open network back at your own file after such an edit | No call sets the open file's name | The reply names the temporary copy; `save_network` with your path keeps the change. |
 | Register pktctl as an external application | No | `setup_exapp` builds the file; adding it is one click in Packet Tracer. |
 | Image of the physical workspace | No, only `LogicalWorkspace.getWorkspaceImage` | `screenshot` with `view: physical` or `physical_rack` switches views and captures Packet Tracer's own window through the operating system. |
 | Headless Packet Tracer on macOS | No: the Cocoa platform plugin is required | Packet Tracer must be running with a window. |

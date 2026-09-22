@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::{
     features::{
         devices::{list, remove},
-        workspace::{OpenRequest, SaveRequest, open, save},
+        paths::app_window,
+        workspace::{OpenRequest, open},
     },
     packet_tracer::{PacketTracer, PtError},
 };
@@ -11,8 +12,9 @@ use crate::{
 const PDU_MODEL: &str = "Power Distribution Device";
 static SCRATCH_FILES: AtomicUsize = AtomicUsize::new(0);
 
-/// Saves the network, applies `edit` to the saved XML, reopens it and removes the
-/// power units Packet Tracer adds on open. Returns the file used.
+/// Takes the open network as `.pkt` bytes straight from Packet Tracer, applies `edit`
+/// to its XML, writes the result to a new temporary file and opens that, removing the
+/// power units Packet Tracer adds on open. The user's own file is never written.
 pub(crate) async fn edit_saved_network<P, F>(packet_tracer: &P, edit: F) -> Result<String, PtError>
 where
     P: PacketTracer,
@@ -24,31 +26,21 @@ where
         .into_iter()
         .map(|device| device.name)
         .collect();
-    let saved = match save(packet_tracer, &SaveRequest::default()).await {
-        Ok(saved) => saved,
-        Err(PtError::InvalidInput(_)) => {
-            let scratch = std::env::temp_dir().join(format!(
-                "pktctl-network-{}-{}.pkt",
-                std::process::id(),
-                SCRATCH_FILES.fetch_add(1, Ordering::Relaxed)
-            ));
-            save(
-                packet_tracer,
-                &SaveRequest {
-                    path: Some(scratch.display().to_string()),
-                },
-            )
-            .await?
-        }
-        Err(error) => return Err(error),
-    };
-    let path = saved.path;
+    let current = packet_tracer
+        .call(app_window().method("fileSaveToBytes", []))
+        .await?
+        .into_bytes()
+        .ok_or_else(|| PtError::UnexpectedReply("fileSaveToBytes should return bytes".into()))?;
+    let xml = pktfile::decode(&current).map_err(|error| file_error(&error))?;
+    let edited = pktfile::encode(&edit(&xml)?).map_err(|error| file_error(&error))?;
 
-    let bytes = std::fs::read(&path).map_err(|error| local_file(&path, &error))?;
-    let xml = pktfile::decode(&bytes).map_err(|error| file_error(&error))?;
-    let edited = edit(&xml)?;
-    let bytes = pktfile::encode(&edited).map_err(|error| file_error(&error))?;
-    std::fs::write(&path, bytes).map_err(|error| local_file(&path, &error))?;
+    let scratch = std::env::temp_dir().join(format!(
+        "pktctl-edit-{}-{}.pkt",
+        std::process::id(),
+        SCRATCH_FILES.fetch_add(1, Ordering::Relaxed)
+    ));
+    let path = scratch.display().to_string();
+    std::fs::write(&scratch, edited).map_err(|error| local_file(&path, &error))?;
 
     open(
         packet_tracer,

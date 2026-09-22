@@ -122,9 +122,9 @@ impl<P: PacketTracer> PktctlServer<P> {
     #[tool(
         name = "rename_location",
         description = "Rename a city, building, wiring closet or other location. Packet Tracer \
-                       has no call for this, so pktctl saves the network, edits the saved file \
-                       and reopens it; the network ends up saved (to its current file, or to a \
-                       temporary file if it was never saved).",
+                       has no call for this, so pktctl takes the network as bytes, edits them and \
+                       opens the result as a temporary copy; your own file is not written, save \
+                       with save_network and a path to keep the change.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -144,9 +144,9 @@ impl<P: PacketTracer> PktctlServer<P> {
     #[tool(
         name = "add_building",
         description = "Create a named building inside a city. Packet Tracer has no call for \
-                       this, so pktctl saves the network, adds the building to the saved file \
-                       and reopens it; the network ends up saved (to its current file, or to a \
-                       temporary file if it was never saved).",
+                       this, so pktctl takes the network as bytes, adds the building and opens \
+                       the result as a temporary copy; your own file is not written, save with \
+                       save_network and a path to keep the change.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -424,6 +424,36 @@ mod tests {
         assert!(list.locations.iter().any(|location| location.path
             == "Cochabamba/Corporate Office/Main Wiring Closet/Rack"
             && location.devices == ["R1", "S1"]));
+        std::fs::remove_file(renamed.file).unwrap();
+    }
+
+    #[tokio::test]
+    async fn file_edits_never_write_the_users_own_file() {
+        let (_canvas, packet_tracer) = lab().await;
+        let own = std::env::temp_dir().join(format!("pktctl-own-{}.pkt", std::process::id()));
+        let own_path = own.display().to_string();
+        crate::features::workspace::save(
+            &packet_tracer,
+            &crate::features::workspace::SaveRequest {
+                path: Some(own_path.clone()),
+            },
+        )
+        .await
+        .unwrap();
+        let original = std::fs::read(&own).unwrap();
+
+        let renamed = rename_location(
+            &packet_tracer,
+            &RenameLocationRequest {
+                path: "Home City".into(),
+                name: "Cochabamba".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_ne!(renamed.file, own_path);
+        assert_eq!(std::fs::read(&own).unwrap(), original);
+        std::fs::remove_file(own).unwrap();
         std::fs::remove_file(renamed.file).unwrap();
     }
 

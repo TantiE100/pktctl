@@ -33,7 +33,8 @@ pub struct AddBuildingRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct FileEdit {
     pub location: Location,
-    /// The file the network was saved to, edited and reopened from.
+    /// The temporary copy Packet Tracer now has open. Your own file is untouched: save
+    /// with `save_network` and a path to keep the change there.
     pub file: String,
 }
 

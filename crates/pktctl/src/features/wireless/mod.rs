@@ -36,9 +36,10 @@ impl<P: PacketTracer> PktctlServer<P> {
         name = "connect_wireless",
         description = "Connect a laptop, PC or other client with a wireless card to a network: \
                        SSID, security and key, plus DHCP or a static address. Packet Tracer \
-                       only associates when a network is loaded, so pktctl saves the network, \
-                       sets the client's current profile in the file, reopens it and reports \
-                       whether it associated and with which access point.",
+                       only associates when a network is loaded, so pktctl takes the network as \
+                       bytes, sets the client's current profile, opens the result as a temporary \
+                       copy (your own file is not written) and reports whether it associated and \
+                       with which access point.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
