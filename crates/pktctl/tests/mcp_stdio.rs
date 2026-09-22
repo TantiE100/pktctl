@@ -14,7 +14,10 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 15] = [
+const TOOLS: [&str; 18] = [
+    "add_module",
+    "list_slots",
+    "remove_module",
     "configure_ios",
     "configure_host",
     "add_device",
@@ -430,6 +433,42 @@ async fn applies_ios_configuration_blocks_end_to_end() {
             "end",
             "write memory"
         ]
+    );
+}
+
+#[tokio::test]
+async fn installs_modules_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
+
+    let slots = client
+        .call_tool("list_slots", json!({ "device": "R1" }))
+        .await;
+    assert_eq!(
+        slots["structuredContent"]["supported_modules"],
+        json!(["HWIC-2T"])
+    );
+
+    let installed = client
+        .call_tool(
+            "add_module",
+            json!({ "device": "R1", "slot": "0/1", "module": "HWIC-2T" }),
+        )
+        .await;
+    assert_eq!(
+        installed["structuredContent"]["ports_added"],
+        json!(["Serial0/1/0", "Serial0/1/1"])
+    );
+    assert_eq!(canvas.installed_cards("R1")[1].as_deref(), Some("HWIC-2T"));
+
+    let removed = client
+        .call_tool("remove_module", json!({ "device": "R1", "slot": "0/1" }))
+        .await;
+    assert_eq!(
+        removed["structuredContent"]["ports_removed"],
+        json!(["Serial0/1/0", "Serial0/1/1"])
     );
 }
 
