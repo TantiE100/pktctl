@@ -34,3 +34,12 @@ test:
   extends: .on_merge_requests_and_main
   script:
     - make test
+
+msrv:
+  stage: test
+  extends: .on_merge_requests_and_main
+  image: rust:1.88.0
+  variables:
+    RUSTUP_TOOLCHAIN: "1.88.0"
+  script:
+    - cargo build --workspace --all-features
