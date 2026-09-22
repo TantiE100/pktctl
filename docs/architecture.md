@@ -1,0 +1,58 @@
+# Architecture
+
+## The path of a tool call
+
+```
+MCP client (Claude, Cursor, ...)
+   │  JSON-RPC over stdio
+   ▼
+pktctl  server.rs            composes feature routers, ServerHandler
+   │
+   ▼
+features/<tool>              pure async logic, builds IPC calls, maps replies
+   │  PacketTracer trait
+   ▼
+packet_tracer/live.rs        lazy connection, reconnects when the session drops
+   │  ptmp::Session
+   ▼
+ptmp                         framing, messages, typed values, pipelined calls, events
+   │  TCP 39000 (PTMP, text encoding, MD5 challenge auth)
+   ▼
+Cisco Packet Tracer          IPC engine, same API its Script Modules use
+```
+
+## Layers
+
+| Layer | Crate / module | Knows about | Does not know about |
+|---|---|---|---|
+| Transport and protocol | `ptmp` | TCP, PTMP frames, IPC messages, value codes | MCP, tools, device semantics |
+| Domain port | `pktctl::packet_tracer` | "call Packet Tracer, get a value", error categories | frames, sockets |
+| Features | `pktctl::features::*` | which IPC calls a tool needs and how to read the replies | how calls travel |
+| Adapter | `pktctl::server` | MCP, rmcp, stdio | IPC method names |
+
+Each layer only depends on the one below it. That is what makes every feature
+unit-testable with `ScriptedPacketTracer` and the whole binary testable end to
+end with `ptmp::fake::FakePt`, without Packet Tracer installed.
+
+## Why PTMP instead of a Script Module bridge
+
+Other Packet Tracer MCP servers run JavaScript inside a Script Module and relay
+commands through a polling web view. pktctl uses PTMP directly because:
+
+- Packet Tracer ships the tool to register an ExApp (`extensions/meta`), so the
+  authentication wall is a one-time setup, not a blocker.
+- Calls are sub-millisecond instead of bound to a 500 ms poll, and many can be
+  in flight at once.
+- Failures return as typed IPC errors. A bad call cannot open a modal dialog
+  that freezes the bridge.
+- Events are pushed by Packet Tracer (for example `nameChanged`), so the server
+  can react instead of re-reading state.
+- Nothing needs to stay open inside Packet Tracer besides Packet Tracer itself.
+
+## Where the API knowledge comes from
+
+Packet Tracer ships its complete IPC API as the official Java framework
+(`help/default/ipc/pt-cep-java-framework-<version>.jar` plus Javadoc) inside the
+installation. Every method name, argument type and enum value pktctl uses was
+read from that framework and then verified against a live Packet Tracer 9.0.1.
+The Cisco files are never copied into this repository.

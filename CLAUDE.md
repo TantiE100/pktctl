@@ -1,0 +1,50 @@
+# CLAUDE.md
+
+Guidance for Claude Code when working in this repository.
+
+## What this is
+
+`pktctl` is an MCP server (stdio) that drives Cisco Packet Tracer natively over
+PTMP, the TCP protocol Packet Tracer exposes to registered external apps
+(ExApps). Full documentation is in [docs/](docs/README.md).
+
+## Commands
+
+```bash
+make check      # fmt-check + clippy -D warnings + all tests; what CI runs
+make test       # unit + E2E against the in-process fake Packet Tracer
+make e2e-live   # E2E against a real Packet Tracer (PKTCTL_APP_ID/PKTCTL_SECRET set)
+make release    # target/release/pktctl
+```
+
+## Layout and layering
+
+```
+crates/ptmp      protocol layer: framing, messages, typed values, Session, FakePt
+crates/pktctl    MCP server
+  config.rs          env -> Config
+  packet_tracer/     domain port: PacketTracer trait, LivePacketTracer, PtError
+  features/<name>/   one folder per tool: pure logic + #[tool_router] adapter + README.md
+  server.rs          composes feature routers, ServerHandler, stdio transport
+```
+
+Dependency direction is strictly `features -> packet_tracer -> ptmp`. Features
+never import `ptmp::Session`; they depend on the `PacketTracer` trait so they
+can be unit-tested with `ScriptedPacketTracer`.
+
+## Rules
+
+- Adding a tool means adding `src/features/<name>/` with `mod.rs` (pure async
+  function + `#[tool_router(router = <name>_router, vis = "pub(crate)")]` impl on
+  `PktctlServer<P>`), unit tests in the same file, and a `README.md`. Register
+  the router in `server.rs` and cover it in `tests/mcp_stdio.rs`.
+- Tool failures must reach the agent as tool errors (`Result<Json<T>, String>`),
+  not JSON-RPC errors.
+- Never guess an IPC method, argument type or enum value. Read it from the
+  official Java framework shipped with Packet Tracer; see
+  [docs/reference/ptmp.md](docs/reference/ptmp.md#finding-the-exact-signature).
+- No code comments unless the code cannot say it; documentation goes in the
+  feature and crate READMEs.
+- Git: never commit to `main`. Work on `feat/`, `fix/`, `docs/` or `chore/`
+  branches and merge with `--no-ff`. Conventional commit messages.
+- Docs use plain punctuation: no em dashes.
