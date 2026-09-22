@@ -1,4 +1,4 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ptmp::Value;
@@ -54,7 +54,7 @@ impl Screenshot {
 
 pub async fn capture<P: PacketTracer>(
     packet_tracer: &P,
-    desktop: &dyn Desktop,
+    desktop: &Arc<dyn Desktop>,
     request: &ScreenshotRequest,
 ) -> Result<Screenshot, PtError> {
     let target = request
@@ -74,7 +74,7 @@ pub async fn capture<P: PacketTracer>(
                 PtError::UnexpectedReply("the workspace image should be a byte list".into())
             })?
         }
-        View::Window => desktop.capture_packet_tracer()?,
+        View::Window => capture_window(desktop).await?,
         View::Physical => physical(packet_tracer, desktop, "switchToTopView").await?,
         View::PhysicalRack => physical(packet_tracer, desktop, "switchToHomeRack").await?,
     };
@@ -85,7 +85,8 @@ pub async fn capture<P: PacketTracer>(
     }
 
     if let Some(path) = &target {
-        std::fs::write(path, &png)
+        tokio::fs::write(path, &png)
+            .await
             .map_err(|error| PtError::InvalidInput(format!("could not write `{path}`: {error}")))?;
     }
     Ok(Screenshot {
@@ -96,7 +97,7 @@ pub async fn capture<P: PacketTracer>(
 
 async fn physical<P: PacketTracer>(
     packet_tracer: &P,
-    desktop: &dyn Desktop,
+    desktop: &Arc<dyn Desktop>,
     place: &str,
 ) -> Result<Vec<u8>, PtError> {
     let switch = app_window().method("getPLSwitch", []);
@@ -117,13 +118,20 @@ async fn physical<P: PacketTracer>(
         )
         .await?;
     tokio::time::sleep(REDRAW_PAUSE).await;
-    let captured = desktop.capture_packet_tracer();
+    let captured = capture_window(desktop).await;
     if !was_physical {
         packet_tracer
             .call(switch.method("showLogicalMode", []))
             .await?;
     }
     captured
+}
+
+async fn capture_window(desktop: &Arc<dyn Desktop>) -> Result<Vec<u8>, PtError> {
+    let desktop = Arc::clone(desktop);
+    tokio::task::spawn_blocking(move || desktop.capture_packet_tracer())
+        .await
+        .map_err(|error| PtError::Transport(format!("the window capture stopped: {error}")))?
 }
 
 fn png_path(path: &str) -> Result<String, PtError> {

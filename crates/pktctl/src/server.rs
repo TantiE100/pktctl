@@ -64,8 +64,8 @@ impl<P: PacketTracer> PktctlServer<P> {
         &self.packet_tracer
     }
 
-    pub(crate) fn desktop(&self) -> &dyn Desktop {
-        self.desktop.as_ref()
+    pub(crate) fn desktop(&self) -> &Arc<dyn Desktop> {
+        &self.desktop
     }
 
     pub(crate) fn setup_settings(&self) -> &SetupSettings {

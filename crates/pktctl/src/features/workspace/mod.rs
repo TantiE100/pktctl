@@ -168,6 +168,7 @@ mod tests {
 
     use super::*;
     use crate::{
+        desktop::Desktop,
         features::devices::{AddDeviceRequest, add, list},
         packet_tracer::{PtError, scripted::ScriptedPacketTracer},
         testing::{Canvas, FakeDesktop},
@@ -177,6 +178,10 @@ mod tests {
         let canvas = Arc::new(Canvas::new());
         let packet_tracer = ScriptedPacketTracer::on_canvas(Arc::clone(&canvas));
         (canvas, packet_tracer)
+    }
+
+    fn fake_desktop() -> Arc<dyn Desktop> {
+        Arc::new(FakeDesktop::default())
     }
 
     async fn add_router(packet_tracer: &ScriptedPacketTracer, name: &str) {
@@ -387,7 +392,8 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn physical_captures_switch_views_and_switch_back() {
         let (canvas, packet_tracer) = canvas();
-        let desktop = FakeDesktop::default();
+        let fake = Arc::new(FakeDesktop::default());
+        let desktop: Arc<dyn Desktop> = fake.clone();
         let shot = capture(
             &packet_tracer,
             &desktop,
@@ -399,7 +405,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(shot.png, FakeDesktop::PNG);
-        assert_eq!(desktop.captures(), 1);
+        assert_eq!(fake.captures(), 1);
         assert!(!canvas.is_physical_mode(), "the logical view is restored");
 
         capture(
@@ -412,7 +418,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(desktop.captures(), 2);
+        assert_eq!(fake.captures(), 2);
     }
 
     #[tokio::test]
@@ -420,7 +426,7 @@ mod tests {
         let (_canvas, packet_tracer) = canvas();
         let shot = capture(
             &packet_tracer,
-            &FakeDesktop::default(),
+            &fake_desktop(),
             &ScreenshotRequest::default(),
         )
         .await
@@ -432,7 +438,7 @@ mod tests {
         let path = path.to_string_lossy().into_owned();
         let saved = capture(
             &packet_tracer,
-            &FakeDesktop::default(),
+            &fake_desktop(),
             &ScreenshotRequest {
                 save_to: Some(path.clone()),
                 ..ScreenshotRequest::default()
