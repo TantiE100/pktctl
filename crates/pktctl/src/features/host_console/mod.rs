@@ -14,6 +14,9 @@ use crate::{
 const TERMINAL: &str = "TerminalLine";
 const OUTPUT_WRITTEN: &str = "outputWritten";
 const COMMAND_ENDED: &str = "commandEnded";
+const MORE_DISPLAYED: &str = "moreDisplayed";
+const SPACE: i8 = 32;
+const NO_SPECIAL_CHAR: i32 = 0;
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 300;
 
@@ -63,16 +66,31 @@ pub async fn run<P: PacketTracer>(
         .map_err(explain_non_hosts)?;
     let terminal = expect_text(&terminal, "terminal id")?;
 
-    let subscriptions =
-        [OUTPUT_WRITTEN, COMMAND_ENDED].map(|event| Subscription::to(TERMINAL, &terminal, event));
+    let subscriptions = [OUTPUT_WRITTEN, COMMAND_ENDED, MORE_DISPLAYED]
+        .map(|event| Subscription::to(TERMINAL, &terminal, event));
     let mut events = packet_tracer.subscribe(subscriptions[0].clone()).await?;
-    packet_tracer.subscribe(subscriptions[1].clone()).await?;
+    for subscription in &subscriptions[1..] {
+        packet_tracer.subscribe(subscription.clone()).await?;
+    }
 
     let entered = packet_tracer
-        .call(prompt.method("enterCommand", [Value::string(command)]))
+        .call(
+            prompt
+                .clone()
+                .method("enterCommand", [Value::string(command)]),
+        )
         .await;
     let outcome = match entered {
-        Ok(_) => collect(&mut events, &terminal, Duration::from_secs(timeout_secs)).await,
+        Ok(_) => {
+            let console = Console {
+                packet_tracer,
+                prompt: &prompt,
+                terminal: &terminal,
+            };
+            console
+                .collect(&mut events, Duration::from_secs(timeout_secs))
+                .await
+        }
         Err(error) => Err(error),
     };
 
@@ -84,47 +102,66 @@ pub async fn run<P: PacketTracer>(
     outcome
 }
 
-async fn collect(
-    events: &mut Events,
-    terminal: &str,
-    timeout: Duration,
-) -> Result<HostCommandResult, PtError> {
-    let deadline = Instant::now() + timeout;
-    let mut output = String::new();
-    loop {
-        let event = match tokio::time::timeout_at(deadline, events.recv()).await {
-            Err(_) => {
-                return Ok(HostCommandResult {
-                    finished: false,
-                    status: None,
-                    output,
-                });
-            }
-            Ok(Err(RecvError::Lagged(missed))) => {
-                tracing::warn!(missed, "terminal output events were dropped");
+struct Console<'a, P> {
+    packet_tracer: &'a P,
+    prompt: &'a Call,
+    terminal: &'a str,
+}
+
+impl<P: PacketTracer> Console<'_, P> {
+    async fn collect(
+        &self,
+        events: &mut Events,
+        timeout: Duration,
+    ) -> Result<HostCommandResult, PtError> {
+        let deadline = Instant::now() + timeout;
+        let mut output = String::new();
+        loop {
+            let event = match tokio::time::timeout_at(deadline, events.recv()).await {
+                Err(_) => {
+                    return Ok(HostCommandResult {
+                        finished: false,
+                        status: None,
+                        output,
+                    });
+                }
+                Ok(Err(RecvError::Lagged(missed))) => {
+                    tracing::warn!(missed, "terminal output events were dropped");
+                    continue;
+                }
+                Ok(Err(RecvError::Closed)) => {
+                    return Err(PtError::Unreachable(
+                        "connection closed while the command ran".into(),
+                    ));
+                }
+                Ok(Ok(event)) => event,
+            };
+            if event.class != TERMINAL || event.object_uuid != self.terminal {
                 continue;
             }
-            Ok(Err(RecvError::Closed)) => {
-                return Err(PtError::Unreachable(
-                    "connection closed while the command ran".into(),
-                ));
+            match event.name.as_str() {
+                OUTPUT_WRITTEN => output.push_str(first_text(&event)?),
+                MORE_DISPLAYED => self.next_page().await?,
+                COMMAND_ENDED => {
+                    return Ok(HostCommandResult {
+                        finished: true,
+                        status: Some(ended_status(&event)?),
+                        output,
+                    });
+                }
+                _ => {}
             }
-            Ok(Ok(event)) => event,
-        };
-        if event.class != TERMINAL || event.object_uuid != terminal {
-            continue;
         }
-        match event.name.as_str() {
-            OUTPUT_WRITTEN => output.push_str(first_text(&event)?),
-            COMMAND_ENDED => {
-                return Ok(HostCommandResult {
-                    finished: true,
-                    status: Some(ended_status(&event)?),
-                    output,
-                });
-            }
-            _ => {}
-        }
+    }
+
+    async fn next_page(&self) -> Result<(), PtError> {
+        self.packet_tracer
+            .call(self.prompt.clone().method(
+                "enterChar",
+                [Value::Byte(SPACE), Value::Int(NO_SPECIAL_CHAR)],
+            ))
+            .await
+            .map(drop)
     }
 }
 
@@ -219,6 +256,29 @@ mod tests {
         })
     }
 
+    #[tokio::test]
+    async fn pages_through_more_prompts_with_a_space() {
+        let packet_tracer =
+            ScriptedPacketTracer::with_events(|call, emitter| match methods(call).as_slice() {
+                [.., "getObjectUuid"] => Ok(Value::Uuid(TERMINAL_ID.into())),
+                [.., "enterCommand"] => {
+                    emitter.emit(written("page one\n"));
+                    emitter.emit(terminal_event(MORE_DISPLAYED, vec![Value::Int(0)]));
+                    Ok(Value::Void)
+                }
+                [.., "enterChar"] => {
+                    assert_eq!(call.steps()[3].args, [Value::Byte(32), Value::Int(0)]);
+                    emitter.emit(written("page two\n"));
+                    emitter.emit(ended(0));
+                    Ok(Value::Void)
+                }
+                other => panic!("unexpected call {other:?}"),
+            });
+        let result = run(&packet_tracer, &request(None)).await.unwrap();
+        assert!(result.finished);
+        assert_eq!(result.output, "page one\npage two\n");
+    }
+
     fn request(timeout_secs: Option<u64>) -> HostCommandRequest {
         HostCommandRequest {
             device: "PC1".into(),
@@ -252,14 +312,14 @@ mod tests {
         let packet_tracer = pc(|emitter| emitter.emit(ended(0)));
         run(&packet_tracer, &request(None)).await.unwrap();
         let subscriptions = packet_tracer.subscriptions();
-        assert_eq!(subscriptions.len(), 4);
+        assert_eq!(subscriptions.len(), 6);
         assert!(
-            subscriptions[..2]
+            subscriptions[..3]
                 .iter()
                 .all(|subscription| subscription.enabled)
         );
         assert!(
-            subscriptions[2..]
+            subscriptions[3..]
                 .iter()
                 .all(|subscription| !subscription.enabled)
         );
