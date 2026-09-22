@@ -45,7 +45,8 @@ impl<P: PacketTracer> PktctlServer<P> {
                 + Self::wireless_router()
                 + Self::services_router()
                 + Self::preferences_router()
-                + Self::events_router(),
+                + Self::events_router()
+                + Self::activity_router(),
         }
     }
 

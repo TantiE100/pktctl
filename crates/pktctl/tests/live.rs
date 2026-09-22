@@ -677,3 +677,37 @@ async fn watches_devices_being_added() {
     assert_eq!(seen["events"][0]["args"][1], "2911");
     remove_leftovers(&mut actor).await;
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer 9.0.1 on macOS with the pktctl ExApp registered, including FILE"]
+async fn reads_a_sample_activity() {
+    const SAMPLE: &str = "/Applications/Cisco Packet Tracer 9.0.1/Cisco Packet Tracer 9.0.1.app/\
+Contents/saves/06 Industrial -  OT/Industrial Control Systems/PLC - LadderLogic/latching-with-plc.pka";
+    let mut client = live_client().await;
+    let scratch = std::env::temp_dir().join(format!("pktctl-activity-{}", std::process::id()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    let copy = scratch.join("latching.pka");
+    std::fs::copy(SAMPLE, &copy).unwrap();
+    let saved = scratch.join("before.pkt").display().to_string();
+    ok(&mut client, "save_network", json!({ "path": saved })).await;
+
+    ok(
+        &mut client,
+        "open_network",
+        json!({ "path": copy.display().to_string() }),
+    )
+    .await;
+    let status = ok(&mut client, "activity_status", json!({})).await;
+    assert_eq!(status["is_activity"], true, "{status}");
+    let page = ok(&mut client, "activity_instructions", json!({})).await;
+    assert!(
+        page["text"].as_str().unwrap().contains("Latching"),
+        "{page}"
+    );
+    ok(&mut client, "check_activity", json!({})).await;
+
+    ok(&mut client, "open_network", json!({ "path": saved })).await;
+    let plain = ok(&mut client, "activity_status", json!({})).await;
+    assert_eq!(plain["is_activity"], false);
+    std::fs::remove_dir_all(scratch).unwrap();
+}

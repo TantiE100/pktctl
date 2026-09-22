@@ -40,6 +40,7 @@ Validation levels:
 | Server services: AAA (RADIUS/TACACS+), IoT server, NTP authentication, Syslog entries | none yet | ipc |
 | Preferences | `get_preferences`, `set_preferences` | live |
 | Background images, recent files, custom hide options, buffer-full action | none yet | ipc |
-| Activity Wizard and assessment (`.pka`) | none yet | ipc |
+| Activities (`.pka`): status, instructions, connectivity checks, reset; file description | `activity_status`, `activity_instructions`, `check_activity`, `reset_activity`, `network_description` | live |
+| Activity authoring: wizard, answer network, variables, scripts, timers, passwords | none | ipc |
 | Multiuser, IoT, programming environment | none yet | ipc |
 | IPC events: 73 classes, 202 events | `watch_events` | live |
