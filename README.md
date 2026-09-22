@@ -8,6 +8,11 @@ there is no extension window to keep open and no polling bridge in between.
 - Calls round-trip in well under a millisecond and can be pipelined.
 - Errors come back typed (`Device: IPC Cache entry`), never as a frozen modal.
 
+Requires Packet Tracer 9.0.1 with IPC enabled. It builds on Linux, macOS and
+Windows, but every live check so far ran on macOS; the paths in
+[docs/features/exapp-registration.md](docs/features/exapp-registration.md) note
+where the registration file goes on each system.
+
 ## Tools
 
 | Tool | What it does |
