@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{error::FrameError, fields::Fields};
+use crate::{data::DataLayouts, error::FrameError, fields::Fields};
 
 pub const MAX_FRAME_LEN: usize = 64 * 1024 * 1024;
 const MAX_LEN_DIGITS: usize = 10;
@@ -20,8 +20,8 @@ impl Frame {
         &self.body
     }
 
-    pub(crate) fn fields(&self) -> Fields<'_> {
-        Fields::new(&self.body)
+    pub(crate) fn fields<'a>(&'a self, layouts: &'a DataLayouts) -> Fields<'a> {
+        Fields::with_layouts(&self.body, layouts)
     }
 }
 

@@ -19,6 +19,7 @@ use tokio_util::codec::Framed;
 use crate::{
     auth::md5_digest,
     call::Call,
+    data::DataLayouts,
     error::Error,
     event::{Event, Subscription},
     frame::FrameCodec,
@@ -54,6 +55,8 @@ pub struct SessionConfig {
     pub credentials: Credentials,
     pub connect_timeout: Duration,
     pub call_timeout: Duration,
+    /// Value-object layouts used to decode replies and events.
+    pub data_layouts: Arc<DataLayouts>,
 }
 
 impl SessionConfig {
@@ -63,6 +66,7 @@ impl SessionConfig {
             credentials,
             connect_timeout: Duration::from_secs(5),
             call_timeout: Duration::from_secs(30),
+            data_layouts: Arc::new(DataLayouts::new()),
         }
     }
 }
@@ -103,7 +107,12 @@ impl Session {
         .await
         .map_err(|_| Error::Timeout(config.connect_timeout))??;
 
-        Ok(Self::start(transport, &negotiation, config.call_timeout))
+        Ok(Self::start(
+            transport,
+            &negotiation,
+            config.call_timeout,
+            Arc::clone(&config.data_layouts),
+        ))
     }
 
     pub fn pt_version(&self) -> Option<&str> {
@@ -158,7 +167,12 @@ impl Session {
         self.shared.closed.store(true, Ordering::Release);
     }
 
-    fn start(transport: Transport, negotiation: &Negotiation, call_timeout: Duration) -> Self {
+    fn start(
+        transport: Transport,
+        negotiation: &Negotiation,
+        call_timeout: Duration,
+        layouts: Arc<DataLayouts>,
+    ) -> Self {
         let (outbound, outbound_queue) = mpsc::unbounded_channel();
         let shared = Arc::new(Shared {
             outbound,
@@ -172,7 +186,7 @@ impl Session {
 
         let (sink, stream) = transport.split();
         tokio::spawn(write_loop(sink, outbound_queue, Arc::clone(&shared)));
-        tokio::spawn(read_loop(stream, Arc::clone(&shared)));
+        tokio::spawn(read_loop(stream, Arc::clone(&shared), layouts));
         Self { shared }
     }
 }
@@ -294,11 +308,15 @@ async fn write_loop(
     shared.shut_down();
 }
 
-async fn read_loop(mut stream: SplitStream<Transport>, shared: Arc<Shared>) {
+async fn read_loop(
+    mut stream: SplitStream<Transport>,
+    shared: Arc<Shared>,
+    layouts: Arc<DataLayouts>,
+) {
     while let Some(frame) = stream.next().await {
         let message = match frame
             .map_err(Error::from)
-            .and_then(|frame| Ok(Message::from_frame(&frame)?))
+            .and_then(|frame| Ok(Message::from_frame_with(&frame, &layouts)?))
         {
             Ok(message) => message,
             Err(Error::Protocol(error)) => {

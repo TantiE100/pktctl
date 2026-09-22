@@ -10,8 +10,10 @@ pub struct LivePacketTracer {
 }
 
 impl LivePacketTracer {
-    pub fn new(config: SessionConfig) -> Self {
-        super::api::ApiIndex::register_data_layouts();
+    pub fn new(mut config: SessionConfig) -> Self {
+        if config.data_layouts.is_empty() {
+            config.data_layouts = std::sync::Arc::new(super::api::ApiIndex::data_layouts());
+        }
         Self {
             config,
             session: Mutex::new(None),

@@ -288,7 +288,7 @@ impl Value {
                     return Ok(address);
                 }
                 let mut values = Vec::new();
-                match crate::data::layout(&class) {
+                match fields.layouts().layout(&class) {
                     crate::data::Layout::Fixed(count) => {
                         for _ in 0..count {
                             values.push(Self::decode(fields)?);
@@ -336,7 +336,14 @@ mod tests {
     use super::*;
 
     fn decode_body(body: &[u8]) -> Result<Value, ProtocolError> {
-        let mut fields = Fields::new(body);
+        decode_body_with(body, &crate::data::DataLayouts::new())
+    }
+
+    fn decode_body_with(
+        body: &[u8],
+        layouts: &crate::data::DataLayouts,
+    ) -> Result<Value, ProtocolError> {
+        let mut fields = Fields::with_layouts(body, layouts);
         let value = Value::decode(&mut fields)?;
         fields.finish()?;
         Ok(value)
@@ -347,6 +354,15 @@ mod tests {
         decode_body(frame.body())
     }
 
+    fn decode_with(
+        tokens: &[&str],
+        layouts: &[(&str, Option<usize>)],
+    ) -> Result<Value, ProtocolError> {
+        let frame: crate::frame::Frame = tokens.iter().collect();
+        let layouts: crate::data::DataLayouts = layouts.iter().copied().collect();
+        decode_body_with(frame.body(), &layouts)
+    }
+
     fn encode_result(value: &Value) -> Vec<u8> {
         let mut out = FrameBuilder::default();
         value.encode_result(&mut out);
@@ -355,7 +371,6 @@ mod tests {
 
     #[test]
     fn addresses_inside_value_objects_decode_as_addresses() {
-        crate::data::register([("DnsRrATest".to_owned(), None)]);
         let record = decode(&[
             "16",
             "DnsRrATest",
@@ -376,7 +391,6 @@ mod tests {
 
     #[test]
     fn decodes_data_objects_by_layout_or_by_type_codes() {
-        crate::data::register([("FlowChartNodeTest".to_owned(), None)]);
         let node = [
             "16",
             "FlowChartNodeTest",
@@ -397,8 +411,12 @@ mod tests {
         assert_eq!(fields.len(), 4);
         assert_eq!(fields[3], Value::Int(3));
 
-        crate::data::register([("PairedDataTest".to_owned(), Some(1))]);
-        let paired = decode(&["14", "16", "PairedDataTest", "8", "x", "4", "7"]).unwrap();
+        let layouts = [("PairedDataTest", Some(1))];
+        let paired = decode_with(
+            &["14", "16", "PairedDataTest", "8", "x", "4", "7"],
+            &layouts,
+        )
+        .unwrap();
         let (first, second) = paired.into_pair().unwrap();
         assert_eq!(
             first,
@@ -409,7 +427,7 @@ mod tests {
         );
         assert_eq!(second, Value::Int(7));
 
-        let text = decode(&["14", "16", "www.gamc.bo", "4", "7"]).unwrap();
+        let text = decode_with(&["14", "16", "www.gamc.bo", "4", "7"], &layouts).unwrap();
         assert_eq!(text.into_pair().unwrap().0, Value::string("www.gamc.bo"));
     }
 
