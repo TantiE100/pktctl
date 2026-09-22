@@ -1,12 +1,13 @@
 use std::{
     future::Future,
-    sync::{Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError},
 };
 
 use ptmp::{Call, Event, Subscription, Value};
 use tokio::sync::broadcast;
 
 use super::{Events, PacketTracer, PtError};
+use crate::testing::Canvas;
 
 type Script = dyn Fn(&Call, &Emitter) -> Result<Value, PtError> + Send + Sync;
 
@@ -42,6 +43,10 @@ impl ScriptedPacketTracer {
             emitter: Emitter(broadcast::channel(256).0),
             subscriptions: Mutex::default(),
         }
+    }
+
+    pub(crate) fn on_canvas(canvas: Arc<Canvas>) -> Self {
+        Self::new(move |call| canvas.handle(call).map_err(PtError::from))
     }
 
     pub(crate) fn unreachable() -> Self {

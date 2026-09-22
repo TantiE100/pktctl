@@ -26,7 +26,13 @@
 | Live E2E | `#[ignore]` tests in both crates | Yes |
 
 Unit and fake-backed tests use byte sequences captured from a real Packet Tracer
-9.0.1 session, so they pin the exact wire format.
+9.0.1 session, so they pin the exact wire format. Feature tests run on
+`pktctl::testing::Canvas`, an in-memory Packet Tracer that rejects wrongly
+typed arguments exactly like the real one (`Invalid arguments for IPC call`),
+so an encoding mistake fails a test instead of a live session.
+
+When the live suite or a manual check disagrees with the canvas, fix the
+canvas first so the mismatch stays covered.
 
 ## Running the live suite
 

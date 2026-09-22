@@ -26,6 +26,7 @@ crates/pktctl    MCP server
   packet_tracer/     domain port: PacketTracer trait, LivePacketTracer, PtError
   features/<name>/   one folder per tool: pure logic + #[tool_router] adapter + README.md
   server.rs          composes feature routers, ServerHandler, stdio transport
+  testing/           Canvas: in-memory Packet Tracer used by feature and MCP E2E tests
 ```
 
 Dependency direction is strictly `features -> packet_tracer -> ptmp`. Features
@@ -38,6 +39,8 @@ can be unit-tested with `ScriptedPacketTracer`.
   function + `#[tool_router(router = <name>_router, vis = "pub(crate)")]` impl on
   `PktctlServer<P>`), unit tests in the same file, and a `README.md`. Register
   the router in `server.rs` and cover it in `tests/mcp_stdio.rs`.
+- Features share IPC paths through `features/paths.rs`; cross-feature calls go
+  through public functions (for example `catalog::find_device_model`).
 - Tool failures must reach the agent as tool errors (`Result<Json<T>, String>`),
   not JSON-RPC errors.
 - Never guess an IPC method, argument type or enum value. Read it from the

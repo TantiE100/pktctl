@@ -443,6 +443,7 @@ name = "pktctl"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "pktctl",
  "ptmp",
  "rmcp",
  "schemars",

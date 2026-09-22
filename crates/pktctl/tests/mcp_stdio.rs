@@ -1,4 +1,6 @@
-use std::{process::Stdio, time::Duration};
+use std::{process::Stdio, sync::Arc, time::Duration};
+
+use pktctl::testing::Canvas;
 
 use ptmp::{
     Call, Credentials, Event, Value,
@@ -12,6 +14,17 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
+const TOOLS: [&str; 9] = [
+    "add_device",
+    "list_devices",
+    "list_models",
+    "move_device",
+    "remove_device",
+    "rename_device",
+    "run_cli",
+    "run_host_command",
+    "status",
+];
 const SECRET: &str = "e2e-secret";
 
 struct McpClient {
@@ -98,6 +111,16 @@ impl McpClient {
         self.stdin.write_all(line.as_bytes()).await.unwrap();
         self.stdin.flush().await.unwrap();
     }
+}
+
+async fn eventually<T>(mut check: impl FnMut() -> Option<T>) -> T {
+    for _ in 0..100 {
+        if let Some(value) = check() {
+            return value;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("condition not reached within one second");
 }
 
 fn credentials() -> Credentials {
@@ -197,6 +220,87 @@ async fn client_with_network() -> (FakePt, McpClient) {
     (pt, client)
 }
 
+async fn client_with_canvas() -> (Arc<Canvas>, FakePt, McpClient) {
+    let canvas = Arc::new(Canvas::new());
+    let pt = FakePt::start(credentials(), {
+        let canvas = Arc::clone(&canvas);
+        move |call| match canvas.handle(call) {
+            Ok(value) => Reply::Value(value),
+            Err(remote) => Reply::error(remote.class, remote.message),
+        }
+    })
+    .await
+    .unwrap();
+    let client = McpClient::spawn(&pt.addr().to_string()).await;
+    (canvas, pt, client)
+}
+
+#[tokio::test]
+async fn builds_renames_moves_and_removes_devices_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+
+    let router = client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
+    assert_eq!(
+        router["structuredContent"],
+        json!({ "name": "R1", "model": "2911", "kind": "router", "x": 100.0, "y": 100.0 })
+    );
+    client
+        .call_tool(
+            "add_device",
+            json!({ "model": "PC-PT", "x": 400, "y": 300 }),
+        )
+        .await;
+    client
+        .call_tool(
+            "rename_device",
+            json!({ "name": "PC0", "new_name": "PC-ADMIN" }),
+        )
+        .await;
+    client
+        .call_tool("move_device", json!({ "name": "R1", "x": 250, "y": 80 }))
+        .await;
+
+    let listing = client.call_tool("list_devices", json!({})).await;
+    assert_eq!(
+        listing["structuredContent"]["devices"],
+        json!([
+            { "name": "R1", "model": "2911", "kind": "router", "x": 250.0, "y": 80.0 },
+            { "name": "PC-ADMIN", "model": "PC-PT", "kind": "pc", "x": 400.0, "y": 300.0 }
+        ])
+    );
+
+    let removed = client
+        .call_tool("remove_device", json!({ "name": "PC-ADMIN" }))
+        .await;
+    assert_eq!(
+        removed["structuredContent"],
+        json!({ "removed": "PC-ADMIN" })
+    );
+    assert_eq!(canvas.device_names(), ["R1"]);
+}
+
+#[tokio::test]
+async fn device_mistakes_come_back_as_readable_tool_errors() {
+    let (_canvas, _pt, mut client) = client_with_canvas().await;
+    let unknown_model = client
+        .call_tool("add_device", json!({ "model": "2960" }))
+        .await;
+    assert_eq!(unknown_model["isError"], true);
+    assert!(
+        unknown_model["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("did you mean 2960-24TT?")
+    );
+
+    let ghost = client
+        .call_tool("remove_device", json!({ "name": "Ghost" }))
+        .await;
+    assert_eq!(ghost["content"][0]["text"], "device `Ghost` not found");
+}
+
 #[tokio::test]
 async fn advertises_every_feature_tool_with_schemas() {
     let (_pt, mut client) = client_with_network().await;
@@ -208,16 +312,7 @@ async fn advertises_every_feature_tool_with_schemas() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
     names.sort_unstable();
-    assert_eq!(
-        names,
-        [
-            "list_devices",
-            "list_models",
-            "run_cli",
-            "run_host_command",
-            "status"
-        ]
-    );
+    assert_eq!(names, TOOLS);
 
     let run_cli = tools["tools"]
         .as_array()
@@ -238,19 +333,6 @@ async fn status_reports_live_counts() {
     assert_eq!(
         result["structuredContent"],
         json!({ "connected": true, "pt_version": FAKE_PT_VERSION, "devices": 2, "links": 1 })
-    );
-}
-
-#[tokio::test]
-async fn list_devices_describes_the_network() {
-    let (_pt, mut client) = client_with_network().await;
-    let result = client.call_tool("list_devices", json!({})).await;
-    assert_eq!(
-        result["structuredContent"]["devices"],
-        json!([
-            { "name": "R1", "model": "2911", "kind": "Router" },
-            { "name": "PC1", "model": "PC-PT", "kind": "Pc" }
-        ])
     );
 }
 
@@ -317,11 +399,15 @@ async fn run_host_command_streams_console_output_until_the_command_ends() {
             "output": "Reply from 10.0.0.2: bytes=32 time<1ms TTL=128\n"
         })
     );
-    let subscribed: Vec<_> = pt
-        .subscriptions()
-        .into_iter()
-        .map(|subscription| (subscription.event, subscription.enabled))
-        .collect();
+    let subscribed = eventually(|| {
+        let subscribed: Vec<_> = pt
+            .subscriptions()
+            .into_iter()
+            .map(|subscription| (subscription.event, subscription.enabled))
+            .collect();
+        (subscribed.len() == 4).then_some(subscribed)
+    })
+    .await;
     assert_eq!(
         subscribed,
         [

@@ -167,17 +167,15 @@ fn find(models: &[Model], wanted: &str, noun: &str) -> Result<Model, PtError> {
     if let Some(exact) = models.iter().find(|model| model.model == wanted) {
         return Ok(exact.clone());
     }
-    let mut folded = models
-        .iter()
-        .filter(|model| model.model.eq_ignore_ascii_case(wanted));
-    if let (Some(only), None) = (folded.next(), folded.next()) {
+    let key = normalize(wanted);
+    let mut loose = models.iter().filter(|model| normalize(&model.model) == key);
+    if let (Some(only), None) = (loose.next(), loose.next()) {
         return Ok(only.clone());
     }
 
-    let needle = wanted.to_ascii_lowercase();
     let similar: Vec<_> = models
         .iter()
-        .filter(|model| model.model.to_ascii_lowercase().contains(&needle))
+        .filter(|model| normalize(&model.model).contains(&key))
         .map(|model| model.model.as_str())
         .take(8)
         .collect();
@@ -189,6 +187,14 @@ fn find(models: &[Model], wanted: &str, noun: &str) -> Result<Model, PtError> {
     Err(PtError::InvalidInput(format!(
         "unknown {noun} model `{wanted}`; {hint}"
     )))
+}
+
+fn normalize(model: &str) -> String {
+    model
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect()
 }
 
 #[tool_router(router = catalog_router, vis = "pub(crate)")]
@@ -290,6 +296,12 @@ mod tests {
         assert_eq!((pc.model.as_str(), pc.type_code), ("PC-PT", 8));
         let card = find_module_model(&hardware(), "HWIC-2T").await.unwrap();
         assert_eq!(card.type_code, 2);
+    }
+
+    #[tokio::test]
+    async fn ignores_spacing_and_punctuation_differences() {
+        let switch = find_device_model(&hardware(), "2960 24tt").await.unwrap();
+        assert_eq!(switch.model, "2960-24TT");
     }
 
     #[tokio::test]
