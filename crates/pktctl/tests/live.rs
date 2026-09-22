@@ -311,3 +311,74 @@ async fn call_ipc_reaches_the_raw_api() {
     assert_eq!(kind["value"]["name"], "ROUTER", "{kind}");
     remove_leftovers(&mut client).await;
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn places_devices_in_the_physical_workspace() {
+    let mut client = live_client().await;
+    let saved = std::env::temp_dir().join(format!("pktctl-physical-{}.pkt", std::process::id()));
+    let saved = saved.display().to_string();
+    ok(
+        &mut client,
+        "new_network",
+        json!({ "save_current_to": saved }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2960-24TT", "name": SWITCH }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "PC-PT", "name": PC_A }),
+    )
+    .await;
+
+    let city = ok(&mut client, "add_location", json!({ "kind": "city" })).await;
+    let city_path = city["path"].as_str().unwrap().to_owned();
+    let closet = ok(
+        &mut client,
+        "add_location",
+        json!({ "kind": "wiring_closet", "inside": city_path, "x": 120, "y": 80 }),
+    )
+    .await;
+    let closet_path = closet["path"].as_str().unwrap().to_owned();
+    assert_eq!(
+        (closet["x"].as_i64(), closet["y"].as_i64()),
+        (Some(120), Some(80))
+    );
+
+    let moved = ok(
+        &mut client,
+        "move_to_location",
+        json!({ "device": SWITCH, "into": closet_path }),
+    )
+    .await;
+    assert_eq!(moved["now_in"], format!("{closet_path}/Rack"), "{moved}");
+    let pc = ok(
+        &mut client,
+        "move_to_location",
+        json!({ "device": PC_A, "into": city_path }),
+    )
+    .await;
+    assert_eq!(pc["now_in"], city_path);
+
+    let back = ok(
+        &mut client,
+        "move_to_location",
+        json!({ "device": SWITCH, "into": "Home City/Corporate Office/Main Wiring Closet" }),
+    )
+    .await;
+    assert_eq!(
+        back["now_in"],
+        "Home City/Corporate Office/Main Wiring Closet/Rack"
+    );
+    let shown = ok(&mut client, "show_workspace", json!({ "view": "physical" })).await;
+    assert_eq!(shown["physical"], true);
+    ok(&mut client, "show_workspace", json!({ "view": "logical" })).await;
+    ok(&mut client, "open_network", json!({ "path": saved })).await;
+    std::fs::remove_file(saved).unwrap();
+}

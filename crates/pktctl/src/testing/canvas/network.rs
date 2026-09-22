@@ -3,7 +3,7 @@ use std::net::Ipv4Addr;
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Endpoint, Port, State, console, modules,
+    Endpoint, Port, State, console, modules, physical,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
 };
 
@@ -58,6 +58,15 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
                 .name
                 .clone();
             port(state, index, &name, rest)
+        }
+        ("getPhysicalObject", rest) => {
+            no_args(step, class)?;
+            let physical_name = state.devices[index].physical_name.clone();
+            let place = state
+                .physical
+                .device_place(&physical_name)
+                .ok_or_else(|| Remote::missing("PhysicalObject"))?;
+            physical::object(state, place, rest)
         }
         ("getRootModule", rest) => {
             no_args(step, class)?;

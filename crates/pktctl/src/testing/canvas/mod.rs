@@ -3,6 +3,7 @@ mod console;
 mod models;
 mod modules;
 mod network;
+mod physical;
 mod remote;
 mod workspace;
 
@@ -44,6 +45,7 @@ impl Port {
 #[derive(Debug, Clone)]
 struct Device {
     name: String,
+    physical_name: String,
     model: &'static str,
     x: f64,
     y: f64,
@@ -64,6 +66,7 @@ impl Device {
             .map(|(name, kind)| Port::new(name, kind))
             .collect();
         Self {
+            physical_name: name.clone(),
             name,
             model: model.name,
             x,
@@ -109,6 +112,7 @@ pub(super) struct Network {
     devices: Vec<Device>,
     links: Vec<Link>,
     notes: Vec<CanvasNote>,
+    physical: physical::Physical,
 }
 
 #[derive(Debug, Default)]
@@ -120,6 +124,8 @@ struct State {
     current_file: String,
     files: std::collections::HashMap<String, Network>,
     events: Vec<Event>,
+    physical: physical::Physical,
+    physical_mode: bool,
 }
 
 impl State {
@@ -128,6 +134,7 @@ impl State {
             devices: self.devices.clone(),
             links: self.links.clone(),
             notes: self.notes.clone(),
+            physical: self.physical.clone(),
         }
     }
 
@@ -135,6 +142,7 @@ impl State {
         self.devices = network.devices;
         self.links = network.links;
         self.notes = network.notes;
+        self.physical = network.physical;
     }
 }
 
@@ -228,6 +236,16 @@ impl Canvas {
         }
     }
 
+    pub fn physical_parent(&self, device: &str) -> Option<String> {
+        let state = self.state();
+        let physical_name = &state
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)?
+            .physical_name;
+        state.physical.parent_of_device(physical_name)
+    }
+
     pub fn installed_cards(&self, device: &str) -> Vec<Option<String>> {
         self.state()
             .devices
@@ -286,6 +304,17 @@ impl Canvas {
             "network" => network::handle(&mut state, &steps[1..]),
             "appWindow" => workspace::handle(&mut state, &steps[1..]),
             "systemFileManager" => workspace::files(&state, &steps[1..]),
+            "getObjectByUuid" => {
+                let uuid = steps[0]
+                    .args
+                    .first()
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                match physical::by_uuid(&state, uuid) {
+                    Some(id) => physical::object(&mut state, id, &steps[1..]),
+                    None => Err(Remote::missing("IPCObject")),
+                }
+            }
             other => Err(Remote::unknown_method("IPC", other)),
         }
     }

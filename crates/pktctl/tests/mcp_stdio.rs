@@ -13,7 +13,11 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 28] = [
+const TOOLS: [&str; 32] = [
+    "add_location",
+    "list_locations",
+    "move_to_location",
+    "show_workspace",
     "call_ipc",
     "describe_ipc",
     "setup_exapp",
@@ -515,6 +519,35 @@ async fn call_ipc_reaches_any_method_end_to_end() {
             .iter()
             .any(|method| method["signature"] == "getDevice(deviceName: string) -> Device")
     );
+}
+
+#[tokio::test]
+async fn places_devices_in_the_physical_workspace_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2960-24TT", "name": "S1" }))
+        .await;
+    let closet = client
+        .call_tool(
+            "add_location",
+            json!({ "kind": "wiring_closet", "inside": "Home City/Corporate Office" }),
+        )
+        .await;
+    assert_eq!(
+        closet["structuredContent"]["path"],
+        "Home City/Corporate Office/Wiring Closet"
+    );
+    let moved = client
+        .call_tool(
+            "move_to_location",
+            json!({ "device": "S1", "into": "Home City/Corporate Office/Wiring Closet" }),
+        )
+        .await;
+    assert_eq!(
+        moved["structuredContent"],
+        json!({ "moved": "S1", "now_in": "Home City/Corporate Office/Wiring Closet/Rack" })
+    );
+    assert_eq!(canvas.physical_parent("S1").as_deref(), Some("Rack"));
 }
 
 #[tokio::test]

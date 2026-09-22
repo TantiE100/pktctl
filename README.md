@@ -25,6 +25,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
 | `screenshot`, `add_note`, `list_notes`, `remove_note` | See the canvas and annotate it. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
+| `list_locations`, `add_location`, `move_to_location`, `show_workspace` | Physical workspace: cities, closets, racks and where each device sits. |
 | `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
 
 Dedicated tools cover everyday work; `call_ipc` reaches everything else.

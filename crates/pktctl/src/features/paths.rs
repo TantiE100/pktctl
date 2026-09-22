@@ -16,10 +16,12 @@ pub fn app_window() -> Call {
     Call::root("appWindow")
 }
 
+pub fn active_workspace() -> Call {
+    app_window().method("getActiveWorkspace", [])
+}
+
 pub fn logical_workspace() -> Call {
-    app_window()
-        .method("getActiveWorkspace", [])
-        .method("getLogicalWorkspace", [])
+    active_workspace().method("getLogicalWorkspace", [])
 }
 
 pub fn system_files() -> Call {
