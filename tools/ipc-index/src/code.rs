@@ -15,7 +15,10 @@ pub enum Insn {
     PutField(String),
     New(String),
     /// A jump, with where it jumps from and to.
-    Jump { from: u32, to: u32 },
+    Jump {
+        from: u32,
+        to: u32,
+    },
     Other,
 }
 
@@ -53,9 +56,7 @@ pub fn walk(code: &[u8], pool: &Pool) -> Vec<Insn> {
                 .map_or(Insn::Other, |field| Insn::PutField(field.name)),
             0xb7 => pool.member(operand16(1)).map_or(Insn::Other, Insn::Special),
             0xb6 | 0xb8 | 0xb9 => pool.member(operand16(1)).map_or(Insn::Other, Insn::Call),
-            0xbb => pool
-                .class_name(operand16(1))
-                .map_or(Insn::Other, Insn::New),
+            0xbb => pool.class_name(operand16(1)).map_or(Insn::Other, Insn::New),
             0xa7 => jump(at, i64::from(signed16(code, at + 1))),
             0xc8 => {
                 let offset = code.get(at + 1..at + 5).map_or(0, |bytes| {
@@ -89,8 +90,18 @@ fn jump(at: usize, offset: i64) -> Insn {
 fn length(code: &[u8], at: usize) -> usize {
     match code[at] {
         0x10 | 0x12 | 0x15..=0x19 | 0x36..=0x3a | 0xa9 | 0xbc => 2,
-        0x11 | 0x13 | 0x14 | 0x84 | 0x99..=0xa8 | 0xb2..=0xb8 | 0xbb | 0xbd | 0xc0 | 0xc1
-        | 0xc6 | 0xc7 => 3,
+        0x11
+        | 0x13
+        | 0x14
+        | 0x84
+        | 0x99..=0xa8
+        | 0xb2..=0xb8
+        | 0xbb
+        | 0xbd
+        | 0xc0
+        | 0xc1
+        | 0xc6
+        | 0xc7 => 3,
         0xc5 => 4,
         0xb9 | 0xba | 0xc8 | 0xc9 => 5,
         0xc4 => {
@@ -148,7 +159,9 @@ mod tests {
 
     #[test]
     fn measures_a_padded_lookupswitch() {
-        let mut code = vec![0x00, 0xab, 0x00, 0x00, 0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2];
+        let mut code = vec![
+            0x00, 0xab, 0x00, 0x00, 0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2,
+        ];
         code.push(0xb1);
         assert_eq!(length(&code, 1), 1 + 2 + 8 + 8);
     }

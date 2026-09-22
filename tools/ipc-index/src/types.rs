@@ -108,6 +108,9 @@ mod tests {
 
     #[test]
     fn writes_inner_classes_with_dots() {
-        assert_eq!(method("(Lcom/cisco/pt/PopupMenuItem$Inner;)V", None).0, ["com.cisco.pt.PopupMenuItem.Inner"]);
+        assert_eq!(
+            method("(Lcom/cisco/pt/PopupMenuItem$Inner;)V", None).0,
+            ["com.cisco.pt.PopupMenuItem.Inner"]
+        );
     }
 }

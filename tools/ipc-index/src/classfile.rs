@@ -261,7 +261,9 @@ pub fn read(bytes: &[u8]) -> Result<Class> {
     let flags = cursor.u16()?;
     let name = pool.class_name(cursor.u16()?)?;
     let super_index = cursor.u16()?;
-    let super_name = (super_index != 0).then(|| pool.class_name(super_index)).transpose()?;
+    let super_name = (super_index != 0)
+        .then(|| pool.class_name(super_index))
+        .transpose()?;
     let count = cursor.u16()?;
     let mut interfaces = Vec::with_capacity(count as usize);
     for _ in 0..count {

@@ -11,8 +11,10 @@ use crate::types::short;
 
 /// Every enum with its constants and the values Packet Tracer sends for them.
 pub fn read(classes: &BTreeMap<String, Class>, names: &[String]) -> Map<String, Value> {
-    let mut enums: BTreeMap<String, Vec<(String, i64)>> =
-        names.iter().map(|name| (name.clone(), Vec::new())).collect();
+    let mut enums: BTreeMap<String, Vec<(String, i64)>> = names
+        .iter()
+        .map(|name| (name.clone(), Vec::new()))
+        .collect();
     for (java_name, class) in classes {
         let name = short(java_name);
         let Some(values) = enums.get_mut(name) else {
