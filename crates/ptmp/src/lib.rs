@@ -7,6 +7,7 @@ mod event;
 mod frame;
 mod message;
 mod negotiation;
+mod session;
 mod timestamp;
 mod value;
 
@@ -17,4 +18,5 @@ pub use event::{Event, Subscription};
 pub use frame::{Frame, FrameCodec, MAX_FRAME_LEN};
 pub use message::Message;
 pub use negotiation::Negotiation;
+pub use session::{Credentials, Session, SessionConfig};
 pub use value::{TypeCode, Value};
