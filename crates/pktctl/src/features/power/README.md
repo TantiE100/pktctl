@@ -8,7 +8,7 @@ Device power and Realtime mode's time controls.
 |---|---|
 | `set_power` | `{ "device": "R1", "on": false }` switches a device off or on and reads the state back. |
 | `fast_forward` | Realtime toolbar's *Fast Forward Time*: timers jump ahead. |
-| `power_cycle_all` | Realtime toolbar's *Power Cycle Devices*: every device reloads. |
+| `power_cycle_all` | Power cycles every device that is on, the way *Power Cycle Devices* does, and returns their names. |
 
 ## Things worth knowing
 
@@ -22,6 +22,11 @@ Device power and Realtime mode's time controls.
   `configure_ios` with `save: true`) is lost, exactly as on real hardware.
   When `set_power` switches an IOS device on it skips the boot animation and
   answers the initial configuration dialog, so the console is ready.
+- **`power_cycle_all` never presses the button.** `RealtimeToolbar.resetNetwork()`
+  opens a *Reset the network?* confirmation dialog, and while it is open Packet
+  Tracer answers no IPC call at all (measured on 9.0.1: every call, from every
+  client, timed out until the dialog was answered). pktctl switches each device
+  off and back on with `setPower` instead, which shows no dialog.
 - Installing modules already handles its own power cycle; see
   [modules](../modules/README.md).
 
@@ -31,4 +36,4 @@ Device power and Realtime mode's time controls.
 |---|---|
 | `network().getDevice(name: QString).getPower()`, `setPower(bool)`, `skipBoot()` | Device power. |
 | `appWindow().getRealtimeToolbar().fastForwardTime()` | Fast forward. |
-| `appWindow().getRealtimeToolbar().resetNetwork()` | Power cycle every device. |
+| `appWindow().getRealtimeToolbar().resetNetwork()` | Not used: opens a modal dialog that blocks IPC. |

@@ -39,10 +39,7 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
                 pktfile::encode(&state.document()).expect("canvas XML encodes"),
             ))
         }
-        [
-            "getRealtimeToolbar",
-            button @ ("fastForwardTime" | "resetNetwork"),
-        ] => {
+        ["getRealtimeToolbar", button @ "fastForwardTime"] => {
             no_args(&steps[1], "RealtimeToolbar")?;
             state.realtime_presses.push((*button).to_owned());
             Ok(Value::Void)

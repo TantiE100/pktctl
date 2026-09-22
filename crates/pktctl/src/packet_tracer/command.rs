@@ -22,6 +22,18 @@ impl CommandStatus {
             _ => return None,
         })
     }
+
+    /// What IOS prints for a rejected command; Packet Tracer's `enterCommand` reply
+    /// carries only the status.
+    pub(crate) fn explanation(self) -> &'static str {
+        match self {
+            Self::Ok => "",
+            Self::Ambiguous => "% Ambiguous command",
+            Self::Invalid => "% Invalid input detected",
+            Self::Incomplete => "% Incomplete command.",
+            Self::NotImplemented => "Packet Tracer does not implement this command",
+        }
+    }
 }
 
 #[cfg(test)]

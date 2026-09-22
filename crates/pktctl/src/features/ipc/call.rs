@@ -188,7 +188,9 @@ async fn dynamic_class<P: PacketTracer>(
         .await;
     let actual = match reply {
         Ok(reply) => expect_text(&reply, "class name")?,
-        Err(error @ (PtError::Unreachable(_) | PtError::Transport(_))) => return Err(error),
+        Err(error @ (PtError::Unreachable(_) | PtError::Busy(_) | PtError::Transport(_))) => {
+            return Err(error);
+        }
         Err(_) => return Ok(declared.to_owned()),
     };
     Ok(api
