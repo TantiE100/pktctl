@@ -33,7 +33,10 @@ with fresh calls:
 - `add_device` resolves `model` through the catalog (exact, then ignoring case,
   spaces and dashes, so `isr 4331` finds `ISR4331`) and suggests close matches
   otherwise. Without `x`/`y` it uses the next slot of an 8-column grid.
-- Routers and switches skip their boot sequence, so `run_cli` works right away.
+- Routers and switches skip their boot sequence, so `run_cli` works right away,
+  and their console is taken past the "initial configuration dialog" to the
+  user prompt (`Router>`, `Switch>`), so opening the CLI tab in Packet Tracer
+  shows a usable console.
 - Names are unique: `add_device` and `rename_device` refuse a name that is
   already taken. Packet Tracer itself would accept the duplicate and leave one
   device unreachable by name.
@@ -47,6 +50,7 @@ with fresh calls:
 | read | `network().getDevice(name: QString)` or `getDeviceAt(i: int)`, then `getName()`, `getModel()`, `getType()`, `getCenterXCoordinate()`, `getCenterYCoordinate()` |
 | create | `appWindow().getActiveWorkspace().getLogicalWorkspace().addDevice(type: int, model: string, x: double, y: double)` returns the generated name, or empty on failure |
 | skip boot | `network().getDevice(name).skipBoot()` (IOS devices only) |
+| console | `network().getDevice(name).getCommandLine().getPrompt()`, then `enterCommand("no")` on the initial dialog and `enterCommand("")` for the first Return |
 | rename | `network().getDevice(name).setName(new: QString)` |
 | move | `network().getDevice(name).moveToLocationCentered(x: int, y: int)` returns bool |
 | delete | `...getLogicalWorkspace().removeDevice(name: QString)` returns bool |
