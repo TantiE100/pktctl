@@ -64,7 +64,9 @@ pub async fn generate(settings: &SetupSettings) -> Result<SetupResult, PtError> 
         steps: vec![
             "Open Packet Tracer and choose Extensions > IPC > Configure Apps.".into(),
             format!("Click Add and select {pta}."),
-            "Click Ok. The registration survives restarts; call status to confirm.".into(),
+            "Click Ok and call status to confirm. Quit Packet Tracer normally once (Cmd+Q or \
+             File > Exit) so it saves the registration; a crash or forced quit loses it."
+                .into(),
         ],
         meta_tool: meta.display().to_string(),
         pta,

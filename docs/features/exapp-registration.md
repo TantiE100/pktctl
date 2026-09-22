@@ -2,7 +2,7 @@
 
 Packet Tracer only accepts PTMP connections from registered external
 applications (ExApps). Registration is a one-time step per Packet Tracer
-installation and survives restarts.
+installation and survives restarts, as long as Packet Tracer quits normally after registering.
 
 ## The short way: `setup_exapp`
 
@@ -19,6 +19,29 @@ installation and survives restarts.
 to the Packet Tracer folder if it lives elsewhere.
 
 The manual steps below do the same by hand.
+
+### Make it stick
+
+Packet Tracer keeps the app list in memory and writes it to `PT.conf` only
+when it **quits normally** (Cmd+Q, File > Exit). If it crashes or is forced to
+quit in the same session, the registration is lost and `status` reports the
+app id as rejected again. After registering, quit Packet Tracer normally once.
+
+### Why there is no silent registration
+
+Verified on Packet Tracer 9.0.1:
+
+- The IPC API has no call to register an app (`IPCManager` only launches and
+  messages them).
+- Packet Tracer does not scan `~/Cisco Packet Tracer 9.0.1/extensions` or any
+  other user folder for `.pta` files at startup.
+- Opening a `.pta` with Packet Tracer (Open With, `open -a`) treats it as a
+  network file and shows *Workspace is not empty*; it registers nothing.
+- The Configure Apps dialog is accessible to UI automation, but driving it
+  moves the user's keyboard focus and, with a list that refreshes late, can
+  remove the wrong app. pktctl therefore leaves the one click to the user.
+- `PT.conf` is encrypted with a key other than the `.pkt` one; editing it is
+  not attempted.
 
 ## 1. Pick an id and a secret
 
@@ -89,7 +112,7 @@ Call the `status` tool: `connected: true` means everything works.
 | `status.problem` | Cause |
 |---|---|
 | `Packet Tracer is not reachable` | Packet Tracer is closed, or IPC listens on another port (**Extensions → IPC → Options**). |
-| `rejected app id ...` | The ExApp is not registered, or `PKTCTL_SECRET` differs from the `KEY`. Run `setup_exapp` and register the file it creates. |
+| `rejected app id ...` | The ExApp is not registered, or `PKTCTL_SECRET` differs from the `KEY`. Run `setup_exapp` and register the file it creates. If it worked before a restart, Packet Tracer did not quit normally after registering; register again and quit it normally once. |
 | `does not have the necessary privilege` | The ExApp was registered with fewer privileges; register the current template again. |
 
 ## Security
