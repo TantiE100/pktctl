@@ -32,15 +32,30 @@ Validation levels:
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
 | Physical workspace: renaming locations, creating buildings (not in the IPC API) | `rename_location`, `add_building`, through `.pkt` editing | live |
 | Simulation mode, simple PDUs, stepping, event list with decisions | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | live |
-| Complex PDUs, scenarios, event-list GUI filters, play speed | none yet | ipc |
+| Complex PDUs, scenarios, event-list GUI filters, play speed | `call_ipc` | ipc |
 | Device power, fast forward, power cycling | `set_power`, `fast_forward`, `power_cycle_all` | live |
 | Wireless: access point security, client association, status | `configure_access_point`, `connect_wireless`, `wireless_status` | live |
-| Wireless: channels, radio bands, MAC filtering, WLC, cellular | none yet | ipc |
+| Wireless: channels, radio bands, MAC filtering, WLC, cellular | `call_ipc` | ipc |
 | Server services: DHCP, DNS, HTTP/HTTPS, FTP, email, NTP, Syslog, TFTP | `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | live |
-| Server services: AAA (RADIUS/TACACS+), IoT server, NTP authentication, Syslog entries | none yet | ipc |
+| Server services: AAA (RADIUS/TACACS+), IoT server, NTP authentication, Syslog entries | `call_ipc` | ipc |
 | Preferences | `get_preferences`, `set_preferences` | live |
-| Background images, recent files, custom hide options, buffer-full action | none yet | ipc |
+| Background images, recent files, custom hide options, buffer-full action | `call_ipc` | ipc |
 | Activities (`.pka`): status, instructions, connectivity checks, reset; file description | `activity_status`, `activity_instructions`, `check_activity`, `reset_activity`, `network_description` | live |
-| Activity authoring: wizard, answer network, variables, scripts, timers, passwords | none | ipc |
-| Multiuser, IoT, programming environment | none yet | ipc |
+| Activity authoring: wizard, answer network, variables, scripts, timers, passwords | `call_ipc` | ipc |
+| Multiuser, IoT, programming environment | `call_ipc` | ipc |
 | IPC events: 73 classes, 202 events | `watch_events` | live |
+
+## Limits of Packet Tracer's IPC API
+
+What the API does not offer, and how pktctl handles it:
+
+| Need | In the IPC API? | pktctl |
+|---|---|---|
+| Rename a physical location, create a building | No | `rename_location`, `add_building` edit the saved `.pkt` and reopen it. |
+| Connect a wireless client to a chosen network | `setCurrentProfile` exists but fails in 9.0.1, and clients only associate when their radio starts | `connect_wireless` writes the client's current profile into the saved `.pkt` and reopens it. |
+| Register pktctl as an external application | No | `setup_exapp` builds the file; adding it is one click in Packet Tracer. |
+| Image of the physical workspace | No, only `LogicalWorkspace.getWorkspaceImage` | `show_workspace` switches the view for a person to look. |
+| Headless Packet Tracer on macOS | No: the Cocoa platform plugin is required | Packet Tracer must be running with a window. |
+
+Everything else Packet Tracer exposes over IPC is callable through
+`call_ipc`, and every event through `watch_events`.
