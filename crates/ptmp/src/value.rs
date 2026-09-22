@@ -154,6 +154,13 @@ impl Value {
         }
     }
 
+    pub fn as_ipv6(&self) -> Option<Ipv6Addr> {
+        match *self {
+            Self::Ipv6(address) => Some(address),
+            _ => None,
+        }
+    }
+
     pub fn into_pair(self) -> Option<(Value, Value)> {
         match self {
             Self::Pair(first, second) => Some((*first, *second)),

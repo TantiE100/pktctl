@@ -33,6 +33,18 @@ struct Port {
     gateway: Ipv4Addr,
     dns: Ipv4Addr,
     dhcp: bool,
+    ipv6: Ipv6Settings,
+    firewall: bool,
+    firewall_v6: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Ipv6Settings {
+    enabled: bool,
+    auto_config: bool,
+    addresses: Vec<(std::net::Ipv6Addr, i32)>,
+    gateway: Option<std::net::Ipv6Addr>,
+    dns: Option<std::net::Ipv6Addr>,
 }
 
 impl Port {
@@ -45,6 +57,9 @@ impl Port {
             gateway: Ipv4Addr::UNSPECIFIED,
             dns: Ipv4Addr::UNSPECIFIED,
             dhcp: false,
+            ipv6: Ipv6Settings::default(),
+            firewall: false,
+            firewall_v6: false,
         }
     }
 }
