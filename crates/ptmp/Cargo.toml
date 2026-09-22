@@ -6,6 +6,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 
 [features]
 fake = []
@@ -21,7 +24,7 @@ tracing = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-ptmp = { workspace = true, features = ["fake"] }
+ptmp = { path = ".", features = ["fake"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]

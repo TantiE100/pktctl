@@ -54,7 +54,7 @@ openssl rand -hex 24
 
 ## 2. Write the app meta file
 
-Copy [pktctl-exapp.xml](pktctl-exapp.xml) and set `ID` and `KEY`.
+Copy [pktctl-exapp.xml](../../crates/pktctl/assets/pktctl-exapp.xml) and set `ID` and `KEY`.
 
 Packet Tracer knows eleven privileges (`SecurityPrivilege` in the framework).
 The template grants all of them:

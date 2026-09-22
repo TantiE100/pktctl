@@ -23,7 +23,7 @@ which is exactly when it is needed.
 
 ## How it works
 
-1. Renders [docs/features/pktctl-exapp.xml](../../../../../docs/features/pktctl-exapp.xml),
+1. Renders [assets/pktctl-exapp.xml](../../../assets/pktctl-exapp.xml),
    compiled into the binary, with `PKTCTL_APP_ID` and `PKTCTL_SECRET`. Both are
    restricted to letters, digits, dots, dashes and underscores so they cannot
    break the XML.
