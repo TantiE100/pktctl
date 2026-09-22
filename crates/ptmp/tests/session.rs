@@ -149,3 +149,76 @@ async fn calls_after_close_fail_fast() {
         Err(Error::Closed)
     ));
 }
+
+fn terminal_output(text: &str) -> Event {
+    Event {
+        token: "7".into(),
+        class: "TerminalLine".into(),
+        object_uuid: "{pc1}".into(),
+        name: "outputWritten".into(),
+        args: vec![Value::string(text)],
+    }
+}
+
+#[tokio::test]
+async fn only_subscribed_events_reach_the_session() {
+    let pt = eleven_devices().await;
+    let session = Session::connect(&config_for(&pt)).await.unwrap();
+    let mut events = session.events();
+
+    pt.emit(terminal_output("before subscribing"));
+    session
+        .subscribe(Subscription::to("TerminalLine", "{pc1}", "outputWritten"))
+        .unwrap();
+    session.call(device_count()).await.unwrap();
+    pt.emit(terminal_output("after subscribing"));
+
+    let received = tokio::time::timeout(Duration::from_secs(2), events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received.args, vec![Value::string("after subscribing")]);
+}
+
+#[tokio::test]
+async fn unsubscribing_stops_delivery() {
+    let pt = eleven_devices().await;
+    let session = Session::connect(&config_for(&pt)).await.unwrap();
+    let mut events = session.events();
+    let subscription = Subscription::to("TerminalLine", "{pc1}", "outputWritten");
+
+    session.subscribe(subscription.clone()).unwrap();
+    session
+        .subscribe(Subscription {
+            enabled: false,
+            ..subscription
+        })
+        .unwrap();
+    session.call(device_count()).await.unwrap();
+    pt.emit(terminal_output("nobody listens"));
+
+    let nothing = tokio::time::timeout(Duration::from_millis(200), events.recv()).await;
+    assert!(nothing.is_err());
+}
+
+#[tokio::test]
+async fn replies_can_be_followed_by_events() {
+    let pt = FakePt::start(credentials(), |_| Reply::WithEvents {
+        value: Value::Void,
+        events: vec![terminal_output("Reply from 10.0.0.2\n")],
+    })
+    .await
+    .unwrap();
+    let session = Session::connect(&config_for(&pt)).await.unwrap();
+    let mut events = session.events();
+    session
+        .subscribe(Subscription::to("TerminalLine", "{pc1}", "outputWritten"))
+        .unwrap();
+
+    assert_eq!(session.call(device_count()).await.unwrap(), Value::Void);
+    let received = tokio::time::timeout(Duration::from_secs(2), events.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received.name, "outputWritten");
+}

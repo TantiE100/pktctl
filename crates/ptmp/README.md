@@ -69,6 +69,9 @@ let session = Session::connect(&SessionConfig::new(pt.addr().to_string(), creden
 ```
 
 `FakePt` performs the real handshake over TCP, answers calls with your closure,
-records calls and subscriptions, and can `emit` events.
+records calls and subscriptions, and can `emit` events. Like Packet Tracer, it
+only delivers events a connection subscribed to. `Reply::WithEvents` answers a
+call and then pushes events, which is how command output arrives from a real
+Command Prompt.
 
 The wire format is documented in [docs/reference/ptmp.md](../../docs/reference/ptmp.md).
