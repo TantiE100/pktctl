@@ -11,6 +11,9 @@ mod session;
 mod timestamp;
 mod value;
 
+#[cfg(feature = "fake")]
+pub mod fake;
+
 pub use auth::md5_digest;
 pub use call::{Call, Step};
 pub use error::{Error, FrameError, ProtocolError};
