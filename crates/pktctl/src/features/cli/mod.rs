@@ -37,6 +37,28 @@ pub struct CliRequest {
     /// Seconds to wait for the command to finish. Defaults to 30, maximum 300.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+    /// Console line password, when the device asks for one at `Password:`.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Privileged mode password (`enable secret` or `enable password`).
+    #[serde(default)]
+    pub enable_password: Option<String>,
+}
+
+/// The passwords a locked console may ask for.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Secrets<'a> {
+    pub(crate) line: Option<&'a str>,
+    pub(crate) enable: Option<&'a str>,
+}
+
+impl<'a> Secrets<'a> {
+    fn of(request: &'a CliRequest) -> Self {
+        Self {
+            line: request.password.as_deref(),
+            enable: request.enable_password.as_deref(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -93,6 +115,7 @@ pub async fn run<P: PacketTracer>(
     }
 
     ready_console(packet_tracer, device_name).await?;
+    let secrets = Secrets::of(request);
     if request.mode != CliMode::Current {
         let prompt = packet_tracer
             .call(
@@ -102,10 +125,30 @@ pub async fn run<P: PacketTracer>(
             )
             .await?;
         if let Some(question) = terminal::pending_question(prompt.as_str().unwrap_or_default()) {
-            return Err(PtError::InvalidInput(format!(
-                "`{device_name}` is waiting on `{question}`; answer it first with mode `current` \
-                 (an empty command presses Enter)"
-            )));
+            if !asks_password(&question) {
+                return Err(PtError::InvalidInput(format!(
+                    "`{device_name}` is waiting on `{question}`; answer it first with mode \
+                     `current` (an empty command presses Enter)"
+                )));
+            }
+            let Some(line) = secrets.line else {
+                return Err(PtError::InvalidInput(format!(
+                    "the console of `{device_name}` asks for `{question}`; give the console \
+                     password in `password`"
+                )));
+            };
+            let console = Terminal::open(
+                packet_tracer,
+                device(device_name).method("getCommandLine", []),
+                Interrupt::CtrlShift6,
+            )
+            .await?;
+            let unlocked = console.run(line, MODE_CHANGE_TIMEOUT).await?;
+            if unlocked.question.is_some() {
+                return Err(PtError::Rejected(format!(
+                    "`{device_name}` did not accept that console password"
+                )));
+            }
         }
     }
     let console = Terminal::open(
@@ -114,24 +157,71 @@ pub async fn run<P: PacketTracer>(
         Interrupt::CtrlShift6,
     )
     .await?;
-    switch_mode(&console, request.mode).await?;
-    console.run(command, timeout).await
+    switch_mode(&console, request.mode, secrets).await?;
+    let run = console.run(command, timeout).await?;
+    answer_password(&console, run, secrets, timeout).await
+}
+
+fn asks_password(question: &str) -> bool {
+    question.to_lowercase().contains("password")
+}
+
+/// Types a password when the console asks for one, so a locked device behaves like an open one.
+async fn answer_password<P: PacketTracer>(
+    console: &Terminal<'_, P>,
+    run: TerminalRun,
+    secrets: Secrets<'_>,
+    timeout: Duration,
+) -> Result<TerminalRun, PtError> {
+    if !run.question.as_deref().is_some_and(asks_password) {
+        return Ok(run);
+    }
+    let Some(secret) = secrets.enable.or(secrets.line) else {
+        return Ok(run);
+    };
+    console.run(secret, timeout).await
 }
 
 async fn switch_mode<P: PacketTracer>(
     console: &Terminal<'_, P>,
     target: CliMode,
+    secrets: Secrets<'_>,
 ) -> Result<(), PtError> {
     if target == CliMode::Current {
         return Ok(());
     }
     let current = console.mode().await?;
     for step in mode_path(&current, target) {
-        let run = console.run(step, MODE_CHANGE_TIMEOUT).await?;
+        let mut run = console.run(step, MODE_CHANGE_TIMEOUT).await?;
+        if run.question.as_deref().is_some_and(asks_password) {
+            let secret = if *step == "enable" {
+                secrets.enable.or(secrets.line)
+            } else {
+                secrets.line
+            };
+            let Some(secret) = secret else {
+                // Leave the console at its prompt instead of stuck on the question.
+                console.run("", MODE_CHANGE_TIMEOUT).await?;
+                return Err(PtError::InvalidInput(format!(
+                    "`{step}` asks for a password; give it in {}",
+                    if *step == "enable" {
+                        "`enable_password`"
+                    } else {
+                        "`password`"
+                    }
+                )));
+            };
+            run = console.run(secret, MODE_CHANGE_TIMEOUT).await?;
+            if run.question.as_deref().is_some_and(asks_password) {
+                console.run("", MODE_CHANGE_TIMEOUT).await?;
+                return Err(PtError::Rejected(format!(
+                    "the password for `{step}` was not accepted"
+                )));
+            }
+        }
         if !run.finished || run.status != Some(CommandStatus::Ok) {
             return Err(PtError::Rejected(format!(
-                "could not reach {} mode: `{step}` did not complete (is an enable password \
-                 set?). Console said: {}",
+                "could not reach {} mode: `{step}` did not complete. Console said: {}",
                 target.as_packet_tracer(),
                 run.output.trim()
             )));
@@ -281,8 +371,56 @@ mod tests {
             device: "R1".into(),
             command: command.into(),
             mode,
-            timeout_secs: None,
+            ..CliRequest::default()
         }
+    }
+
+    #[tokio::test]
+    async fn types_the_enable_password_when_the_console_asks() {
+        let (canvas, packet_tracer) = lab().await;
+        run(
+            &packet_tracer,
+            &request("enable secret alcaldia2026", CliMode::Global),
+        )
+        .await
+        .unwrap();
+        run(&packet_tracer, &request("end", CliMode::Current))
+            .await
+            .unwrap();
+        run(&packet_tracer, &request("disable", CliMode::Enable))
+            .await
+            .unwrap();
+
+        let locked = run(&packet_tracer, &request("show clock", CliMode::Enable))
+            .await
+            .unwrap_err();
+        assert!(locked.to_string().contains("enable_password"), "{locked}");
+
+        let unlocked = run(
+            &packet_tracer,
+            &CliRequest {
+                enable_password: Some("alcaldia2026".into()),
+                ..request("show clock", CliMode::Enable)
+            },
+        )
+        .await
+        .unwrap();
+        assert!(unlocked.finished, "{unlocked:?}");
+        assert_eq!(canvas.console_prompt("R1").as_deref(), Some("Router#"));
+
+        run(&packet_tracer, &request("disable", CliMode::Enable))
+            .await
+            .unwrap();
+        let wrong = run(
+            &packet_tracer,
+            &CliRequest {
+                enable_password: Some("otra".into()),
+                ..request("show clock", CliMode::Enable)
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(wrong.to_string().contains("enable"), "{wrong}");
     }
 
     #[tokio::test]
