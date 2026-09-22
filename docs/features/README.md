@@ -7,6 +7,7 @@ its logic, its MCP adapter, its tests and a README.
 |---|---|---|
 | Catalog | `list_models` | [features/catalog](../../crates/pktctl/src/features/catalog/README.md) |
 | Links | `list_ports`, `list_links`, `connect`, `disconnect` | [features/links](../../crates/pktctl/src/features/links/README.md) |
+| Modules | `list_slots`, `add_module`, `remove_module` | [features/modules](../../crates/pktctl/src/features/modules/README.md) |
 | Status | `status` | [features/status](../../crates/pktctl/src/features/status/README.md) |
 | Devices | `list_devices`, `add_device`, `rename_device`, `move_device`, `remove_device` | [features/devices](../../crates/pktctl/src/features/devices/README.md) |
 | CLI | `run_cli`, `configure_ios` | [features/cli](../../crates/pktctl/src/features/cli/README.md) |

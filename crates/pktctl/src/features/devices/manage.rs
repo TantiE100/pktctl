@@ -168,7 +168,10 @@ pub async fn relocate<P: PacketTracer>(
     describe(packet_tracer, name).await
 }
 
-async fn ready_console<P: PacketTracer>(packet_tracer: &P, name: &str) -> Result<(), PtError> {
+pub(crate) async fn ready_console<P: PacketTracer>(
+    packet_tracer: &P,
+    name: &str,
+) -> Result<(), PtError> {
     let console = device(name).method("getCommandLine", []);
     let prompt = packet_tracer
         .call(console.clone().method("getPrompt", []))

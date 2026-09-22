@@ -4,6 +4,7 @@ mod manage;
 use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 
 pub use list::{Device, DeviceList, count, describe, list};
+pub(crate) use manage::ready_console;
 pub use manage::{
     AddDeviceRequest, DeviceRef, MoveRequest, Removed, RenameRequest, add, relocate, remove, rename,
 };

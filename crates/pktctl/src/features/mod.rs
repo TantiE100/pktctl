@@ -4,5 +4,6 @@ pub mod devices;
 pub mod host_console;
 pub mod hosts;
 pub mod links;
+pub mod modules;
 pub mod paths;
 pub mod status;
