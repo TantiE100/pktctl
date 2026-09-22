@@ -99,7 +99,7 @@ tried live:
 | VPN | tool | `vpn_client` |
 | Email | tools | `configure_email`, `send_email`, `receive_email` |
 | Text Editor | tool | `host_files` |
-| Firewall, IPv6 Firewall | on and off | `set_host_firewall`. The rule list has no IPC call. |
+| Firewall, IPv6 Firewall | tool | `set_host_firewall`: both switches and their rules. |
 | Terminal | equivalent | The app's console session only opens from its window, but `run_cli` types at the same router or switch console directly. |
 | Traffic Generator | equivalent | No IPC call. `add_pdu` sends simple PDUs and `run_host_command` sends pings with a size and count. |
 | PPPoE Dialer | not available | `PPPoEClient.connect` and `connectFromPc` exist but send nothing: no PPPoE frame leaves the PC in simulation mode. |

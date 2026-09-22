@@ -951,12 +951,38 @@ async fn configures_host_files_ipv6_and_firewall() {
         (firewall["ipv4"].as_bool(), firewall["ipv6"].as_bool()),
         (Some(true), Some(true))
     );
-    ok(
+    let blocked = ok(
         &mut client,
         "set_host_firewall",
-        json!({ "device": PC_A, "ipv4": false, "ipv6": false }),
+        json!({ "device": PC_A, "ipv4": true, "add_rules": [{ "action": "deny", "protocol": "icmp" }] }),
     )
     .await;
+    assert_eq!(
+        blocked["ipv4_rules"],
+        json!(["deny icmp any any"]),
+        "{blocked}"
+    );
+    let refused = ok(
+        &mut client,
+        "run_host_command",
+        json!({ "device": SERVER, "command": format!("ping -n 2 {}", "192.168.70.20") }),
+    )
+    .await;
+    assert!(
+        !refused["output"].as_str().unwrap().contains("Reply from"),
+        "the firewall rule should drop the ping: {refused}"
+    );
+    let cleared = ok(
+        &mut client,
+        "set_host_firewall",
+        json!({ "device": PC_A, "ipv4": false, "ipv6": false,
+                "remove_rules": [{ "action": "deny", "protocol": "icmp" }] }),
+    )
+    .await;
+    assert!(
+        cleared["ipv4_rules"].as_array().unwrap().is_empty(),
+        "{cleared}"
+    );
     remove_leftovers(&mut client).await;
 }
 

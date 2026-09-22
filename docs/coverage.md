@@ -26,7 +26,7 @@ Validation levels:
 | IOS console and configuration | `run_cli`, `configure_ios` | live |
 | End-device addressing: IPv4, IPv6, inbound firewalls | `configure_host`, `configure_host_ipv6`, `set_host_firewall` | live |
 | Desktop apps: Web Browser, Email, VPN, Text Editor | `browse_web`, `configure_email`, `send_email`, `receive_email`, `vpn_client`, `host_files` | live |
-| Desktop apps without an IPC call: firewall rules, PPPoE Dialer, MIB Browser, IP Communicator, Dial-up, Traffic Generator, Terminal, IOx IDE | see [desktop](../crates/pktctl/src/features/desktop/README.md#what-cannot-be-driven) | none |
+| Desktop apps without an IPC call: PPPoE Dialer, MIB Browser, IP Communicator, Dial-up, Traffic Generator, Terminal, IOx IDE | see [desktop](../crates/pktctl/src/features/desktop/README.md#what-cannot-be-driven) | none |
 | End-device Command Prompt | `run_host_command` | live |
 | Files | `save_network`, `open_network`, `new_network` | live |
 | Canvas image and notes; physical workspace and window captures | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
