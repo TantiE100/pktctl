@@ -21,15 +21,17 @@ make release    # target/release/pktctl
 
 ```
 crates/ptmp      protocol layer: framing, messages, typed values, Session, FakePt
+crates/pktfile   .pkt codec (Twofish-EAX, obfuscation, zlib) and physical-tree XML edits
 crates/pktctl    MCP server
   config.rs          env -> Config
-  packet_tracer/     domain port: PacketTracer trait, LivePacketTracer, PtError
+  packet_tracer/     domain port: PacketTracer trait, LivePacketTracer, PtError, api (IPC index)
   features/<name>/   one folder per tool: pure logic + #[tool_router] adapter + README.md
   server.rs          composes feature routers, ServerHandler, stdio transport
   testing/           Canvas: in-memory Packet Tracer used by feature and MCP E2E tests
 ```
 
-Dependency direction is strictly `features -> packet_tracer -> ptmp`. Features
+Dependency direction is strictly `features -> packet_tracer -> ptmp`, plus
+`features -> pktfile` for tools that must edit the saved file. Features
 never import `ptmp::Session`; they depend on the `PacketTracer` trait so they
 can be unit-tested with `ScriptedPacketTracer`.
 

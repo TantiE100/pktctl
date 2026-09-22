@@ -26,6 +26,7 @@ Cisco Packet Tracer          IPC engine, same API its Script Modules use
 | Layer | Crate / module | Knows about | Does not know about |
 |---|---|---|---|
 | Transport and protocol | `ptmp` | TCP, PTMP frames, IPC messages, value codes | MCP, tools, device semantics |
+| File format | `pktfile` | `.pkt` encryption, obfuscation, compression, physical-tree XML edits | PTMP, MCP |
 | Domain port | `pktctl::packet_tracer` | "call Packet Tracer, get a value", error categories | frames, sockets |
 | Features | `pktctl::features::*` | which IPC calls a tool needs and how to read the replies | how calls travel |
 | Adapter | `pktctl::server` | MCP, rmcp, stdio | IPC method names |

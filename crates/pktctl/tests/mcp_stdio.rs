@@ -13,7 +13,9 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 32] = [
+const TOOLS: [&str; 34] = [
+    "add_building",
+    "rename_location",
     "add_location",
     "list_locations",
     "move_to_location",

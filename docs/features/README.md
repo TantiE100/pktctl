@@ -14,7 +14,7 @@ its logic, its MCP adapter, its tests and a README.
 | CLI | `run_cli`, `configure_ios` | [features/cli](../../crates/pktctl/src/features/cli/README.md) |
 | Hosts | `configure_host` | [features/hosts](../../crates/pktctl/src/features/hosts/README.md) |
 | Host console | `run_host_command` | [features/host_console](../../crates/pktctl/src/features/host_console/README.md) |
-| Physical | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
+| Physical | `list_locations`, `add_location`, `add_building`, `rename_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
 | IPC | `describe_ipc`, `call_ipc` | [features/ipc](../../crates/pktctl/src/features/ipc/README.md) |
 | Setup | `setup_exapp` | [features/setup](../../crates/pktctl/src/features/setup/README.md) |
 

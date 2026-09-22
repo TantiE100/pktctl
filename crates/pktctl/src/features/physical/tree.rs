@@ -38,6 +38,7 @@ pub struct LocationList {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Node {
     pub uuid: String,
+    pub persistent: String,
     pub name: String,
     pub kind: String,
     pub x: i64,
@@ -97,6 +98,16 @@ impl Snapshot {
         let mut nodes = Vec::new();
         read_node(packet_tracer, root(), String::new(), None, &mut nodes).await?;
         Ok(Self { nodes })
+    }
+
+    pub(crate) fn by_persistent(&self, persistent: &str) -> Option<&Node> {
+        self.nodes
+            .iter()
+            .find(|node| node.persistent.eq_ignore_ascii_case(persistent))
+    }
+
+    pub(crate) fn location_of(&self, node: &Node) -> Result<Location, PtError> {
+        self.location(&node.uuid)
     }
 
     pub(crate) fn by_uuid(&self, uuid: &str) -> Option<&Node> {
@@ -169,13 +180,14 @@ fn read_node<'a, P: PacketTracer>(
 ) -> BoxFuture<'a, Result<(), PtError>> {
     Box::pin(async move {
         let get = |method: &str| packet_tracer.call(call.clone().method(method, []));
-        let (name, kind, x, y, count, uuid) = tokio::try_join!(
+        let (name, kind, x, y, count, uuid, persistent) = tokio::try_join!(
             get("getName"),
             get("getType"),
             get("getX"),
             get("getY"),
             get("getChildCount"),
             get("getObjectUuid"),
+            get("getPathUuid"),
         )?;
         let name = expect_text(&name, "physical object name")?;
         let kind = kind_name(expect_integer(&kind, "physical object type")?);
@@ -192,6 +204,7 @@ fn read_node<'a, P: PacketTracer>(
         };
         nodes.push(Node {
             uuid: expect_text(&uuid, "physical object uuid")?,
+            persistent: expect_text(&persistent, "physical object path uuid")?,
             name,
             kind,
             x: expect_integer(&x, "x")?,

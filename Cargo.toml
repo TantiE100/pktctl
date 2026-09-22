@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ptmp", "crates/pktctl"]
+members = ["crates/ptmp", "crates/pktfile", "crates/pktctl"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ authors = ["Santi E. <santy10mcpe@gmail.com>"]
 
 [workspace.dependencies]
 ptmp = { path = "crates/ptmp" }
+pktfile = { path = "crates/pktfile" }
 futures = "0.3"
 md-5 = "0.11"
 rmcp = { version = "3.4", features = ["server", "transport-io", "macros"] }

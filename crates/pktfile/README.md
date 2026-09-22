@@ -1,0 +1,28 @@
+# pktfile
+
+Reads and writes Cisco Packet Tracer `.pkt` files. A `.pkt` file is XML wrapped
+in four layers, undone in this order by `decode` and applied in reverse by
+`encode`:
+
+1. **Byte scrambling.** The file is reversed and each byte is XOR-ed with
+   `(len - i * len) & 0xFF`.
+2. **Authenticated encryption.** Twofish in EAX mode with a fixed key
+   (`0x89` × 16) and nonce (`0x10` × 16); the 16-byte tag is the last 16 bytes.
+3. **Masking.** Each byte is XOR-ed with `(len - i) & 0xFF`.
+4. **Qt compression.** A 4-byte big-endian length, then a zlib stream.
+
+```rust,no_run
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let xml = pktfile::decode(&std::fs::read("lab.pkt")?)?;
+    std::fs::write("lab-copy.pkt", pktfile::encode(&xml)?)?;
+    Ok(())
+}
+```
+
+A wrong or damaged file fails the EAX integrity check (`PktError::Integrity`)
+instead of producing garbage.
+
+The format was documented by [Unpacket](https://github.com/Punkcake21/Unpacket)
+(MIT). `assets/empty-9.0.1.pkt` is an empty network saved by Packet
+Tracer 9.0.1, and the tests decode it and re-encode it. Files written by
+`encode` open in Packet Tracer 9.0.1; see the live tests in `crates/pktctl`.
