@@ -2,7 +2,7 @@
 
 mod auth;
 mod call;
-pub mod data;
+mod data;
 mod error;
 mod event;
 mod fields;
@@ -18,6 +18,7 @@ pub mod fake;
 
 pub use auth::md5_digest;
 pub use call::{Call, Step};
+pub use data::DataLayouts;
 pub use error::{EncodeError, Error, FrameError, ProtocolError};
 pub use event::{Event, Subscription};
 pub use frame::{Frame, FrameCodec, MAX_FRAME_LEN};

@@ -180,14 +180,17 @@ impl ApiIndex {
         })
     }
 
-    pub fn register_data_layouts() {
-        let api = Self::get();
-        ptmp::data::register(api.data.iter().map(|(class, layout)| {
-            (
-                class.clone(),
-                (!layout.variable).then_some(layout.fields.len()),
-            )
-        }));
+    pub fn data_layouts() -> ptmp::DataLayouts {
+        Self::get()
+            .data
+            .iter()
+            .map(|(class, layout)| {
+                (
+                    class.clone(),
+                    (!layout.variable).then_some(layout.fields.len()),
+                )
+            })
+            .collect()
     }
 
     pub fn class_named(&self, wire_name: &str) -> Option<&str> {

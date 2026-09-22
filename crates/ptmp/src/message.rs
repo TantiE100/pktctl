@@ -1,5 +1,6 @@
 use crate::{
     call::Call,
+    data::DataLayouts,
     error::{EncodeError, ProtocolError},
     event::{Event, Subscription},
     frame::{Frame, FrameBuilder},
@@ -99,7 +100,12 @@ impl Message {
     }
 
     pub fn from_frame(frame: &Frame) -> Result<Self, ProtocolError> {
-        let mut fields = frame.fields();
+        Self::from_frame_with(frame, &DataLayouts::new())
+    }
+
+    /// Decodes with the value-object layouts of the Packet Tracer version in use.
+    pub fn from_frame_with(frame: &Frame, layouts: &DataLayouts) -> Result<Self, ProtocolError> {
+        let mut fields = frame.fields(layouts);
         let kind = fields.next("message type")?;
         let message = match kind {
             kind::NEGOTIATION_REQUEST => {

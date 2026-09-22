@@ -1,39 +1,56 @@
 //! Field counts of IPC value objects (type 16), keyed by the class name on the wire.
 //!
-//! A value object is sent as its class name followed by its fields, with no count.
-//! Registered fixed layouts are read exactly and variable ones while the next token is
-//! a type code. Once layouts are registered, a type-16 token that names no class is a
-//! plain string: Packet Tracer sends some string fields of value objects that way.
-//! Without any registration every class is read field by field.
+//! A value object is sent as its class name followed by its fields, with no count, so a
+//! decoder needs the layout of each class. With no layouts every class is read field by
+//! field while the next token is a type code. Once layouts are known, fixed classes are
+//! read exactly, variable ones field by field, and a type-16 token that names no class
+//! is a plain string: Packet Tracer sends some string fields of value objects that way.
 
-use std::{
-    collections::HashMap,
-    sync::{PoisonError, RwLock},
-};
+use std::collections::HashMap;
 
-static LAYOUTS: RwLock<Option<HashMap<String, Option<usize>>>> = RwLock::new(None);
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DataLayouts {
+    classes: HashMap<String, Option<usize>>,
+}
 
-/// Registers value-object classes: `Some(count)` for a fixed number of fields, `None` for
-/// classes whose field count varies and are read while the next token is a type code.
-pub fn register(layouts: impl IntoIterator<Item = (String, Option<usize>)>) {
-    let mut guard = LAYOUTS.write().unwrap_or_else(PoisonError::into_inner);
-    guard.get_or_insert_with(HashMap::new).extend(layouts);
+impl DataLayouts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `Some(count)` for a fixed number of fields, `None` for a class whose count varies.
+    pub fn insert(&mut self, class: impl Into<String>, fields: Option<usize>) {
+        self.classes.insert(class.into(), fields);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.classes.is_empty()
+    }
+
+    pub(crate) fn layout(&self, class: &str) -> Layout {
+        if self.classes.is_empty() {
+            return Layout::Variable;
+        }
+        match self.classes.get(class) {
+            Some(Some(count)) => Layout::Fixed(*count),
+            Some(None) => Layout::Variable,
+            None => Layout::NotAClass,
+        }
+    }
+}
+
+impl<S: Into<String>> FromIterator<(S, Option<usize>)> for DataLayouts {
+    fn from_iter<I: IntoIterator<Item = (S, Option<usize>)>>(iter: I) -> Self {
+        let mut layouts = Self::new();
+        for (class, fields) in iter {
+            layouts.insert(class, fields);
+        }
+        layouts
+    }
 }
 
 pub(crate) enum Layout {
     Fixed(usize),
     Variable,
     NotAClass,
-}
-
-pub(crate) fn layout(class: &str) -> Layout {
-    let guard = LAYOUTS.read().unwrap_or_else(PoisonError::into_inner);
-    match guard.as_ref() {
-        None => Layout::Variable,
-        Some(layouts) => match layouts.get(class) {
-            Some(Some(count)) => Layout::Fixed(*count),
-            Some(None) => Layout::Variable,
-            None => Layout::NotAClass,
-        },
-    }
 }

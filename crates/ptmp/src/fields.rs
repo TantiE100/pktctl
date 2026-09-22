@@ -1,13 +1,29 @@
-use crate::error::ProtocolError;
+use crate::{data::DataLayouts, error::ProtocolError};
+
+#[cfg(test)]
+static NO_LAYOUTS: std::sync::LazyLock<DataLayouts> = std::sync::LazyLock::new(DataLayouts::new);
 
 #[derive(Debug)]
 pub(crate) struct Fields<'a> {
     rest: &'a [u8],
+    layouts: &'a DataLayouts,
 }
 
 impl<'a> Fields<'a> {
+    #[cfg(test)]
     pub(crate) fn new(body: &'a [u8]) -> Self {
-        Self { rest: body }
+        Self::with_layouts(body, &NO_LAYOUTS)
+    }
+
+    pub(crate) fn with_layouts(body: &'a [u8], layouts: &'a DataLayouts) -> Self {
+        Self {
+            rest: body,
+            layouts,
+        }
+    }
+
+    pub(crate) fn layouts(&self) -> &'a DataLayouts {
+        self.layouts
     }
 
     pub(crate) fn next(&mut self, field: &'static str) -> Result<&'a str, ProtocolError> {
