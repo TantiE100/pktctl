@@ -15,7 +15,6 @@ const CHILDREN: &[u8] = b"CHILDREN";
 const BUILDING: i64 = 2;
 const DEVICE: i64 = 6;
 const FURNITURE_KINDS: &[i64] = &[4, 5, 8, 9, 10, 11];
-const TEMPLATE_FILE: &[u8] = include_bytes!("../assets/empty-9.0.1.pkt");
 
 /// One `<NODE>` of the physical workspace, located by byte ranges in the XML.
 #[derive(Debug, Clone, PartialEq)]
@@ -425,7 +424,7 @@ pub fn add_node(
     let nodes = physical_nodes(xml)?;
     let parent = find(&nodes, parent_uuid)?;
     let uuid = format!("{{{}}}", uuid::Uuid::new_v4());
-    let node = node_template(kind, &uuid, name, (x, y))?;
+    let node = node_template(kind, &uuid, name, (x, y));
     let mut edited = xml.to_owned();
     match &parent.children {
         Children::Open { close_tag, .. } => edited.insert_str(*close_tag, &node),
@@ -458,54 +457,64 @@ fn furniture(kind: i64, uuid: &str, name: &str, (x, y): (i32, i32)) -> String {
     )
 }
 
-/// Copies a node of the same kind from an empty Packet Tracer network when there is one,
-/// so every field Packet Tracer writes is kept; furniture, which the empty network has
-/// none of, is written with the same defaults Packet Tracer uses for a rack.
-fn node_template(
-    kind: i64,
-    uuid: &str,
-    name: &str,
-    (x, y): (i32, i32),
-) -> Result<String, PktError> {
-    let empty = crate::decode(TEMPLATE_FILE)?;
-    let nodes = physical_nodes(&empty)?;
-    let Some(template) = nodes.iter().find(|node| node.kind == kind) else {
-        return Ok(furniture(kind, uuid, name, (x, y)));
-    };
-    let base = template.element.start;
-    let mut replacements = vec![
-        (shift(&template.name_text, base), escape(name)),
-        (shift(&template.x_text, base), x.to_string()),
-        (shift(&template.y_text, base), y.to_string()),
-    ];
-    if let Children::Open { content, .. } = &template.children {
-        replacements.push((shift(content, base), String::new()));
-    }
-    let mut text = empty[template.element.clone()].to_owned();
-    let uuid_start = text
-        .rfind(&template.uuid)
-        .ok_or_else(|| PktError::NodeNotFound("node template uuid".into()))?;
-    replacements.push((
-        uuid_start..uuid_start + template.uuid.len(),
-        uuid.to_owned(),
-    ));
-    replacements.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
-    for (range, value) in replacements {
-        text.replace_range(range, &value);
-    }
-    Ok(text)
+/// A building, sized and scaled like the ones Packet Tracer's own toolbar adds to a city, on
+/// its building backdrop. Packet Tracer fills in the environment once it opens the file.
+fn building(uuid: &str, name: &str, (x, y): (i32, i32)) -> String {
+    format!(
+        "<NODE><X>{x}</X><Y>{y}</Y><TYPE>{BUILDING}</TYPE>\
+         <NAME translate=\"true\">{}</NAME><SX>0.0580719</SX><SY>0.058072</SY><W>200</W>\
+         <H>125.261</H><D>3.6576</D>\
+         <PATH isanim=\"false\">../art/Background/gGeoViewBuilding.png</PATH><CHILDREN></CHILDREN>\
+         <MANUAL_SCALING>false</MANUAL_SCALING>\
+         <SCALED_PIXMAP_WIDTH>0</SCALED_PIXMAP_WIDTH>\
+         <SCALED_PIXMAP_HEIGHT>0</SCALED_PIXMAP_HEIGHT><INIT_WIDTH>20</INIT_WIDTH>\
+         <INIT_HEIGHT>20</INIT_HEIGHT><INIT_DEPTH>3.6576</INIT_DEPTH><INIT_SX>0.2</INIT_SX>\
+         <INIT_SY>0.2</INIT_SY><INIT_SZ>0.2</INIT_SZ><BG_TILED>false</BG_TILED>\
+         <CUSTOM_IMAGE_WIDTH>-1</CUSTOM_IMAGE_WIDTH>\
+         <CUSTOM_IMAGE_HEIGHT>-1</CUSTOM_IMAGE_HEIGHT><SCALE_FACTOR>1</SCALE_FACTOR>\
+         <UUID_STR>{uuid}</UUID_STR><SLOT>0</SLOT><SUB_SLOT>0</SUB_SLOT><ICP_CSX>0</ICP_CSX>\
+         <ICP_CSY>0</ICP_CSY></NODE>",
+        escape(name)
+    )
 }
 
 fn shift(range: &Range<usize>, base: usize) -> Range<usize> {
     range.start - base..range.end - base
 }
 
+/// The XML of a new node, written field by field the way Packet Tracer writes its own.
+fn node_template(kind: i64, uuid: &str, name: &str, position: (i32, i32)) -> String {
+    if kind == BUILDING {
+        building(uuid, name, position)
+    } else {
+        furniture(kind, uuid, name, position)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// A physical workspace with the shape Packet Tracer starts from: a world holding one
+    /// city, one building inside it and one wiring closet inside that.
     fn empty_network() -> String {
-        crate::decode(TEMPLATE_FILE).unwrap()
+        let node = |kind: i64, name: &str, (x, y): (i32, i32), children: &str| {
+            format!(
+                "<NODE><X>{x}</X><Y>{y}</Y><TYPE>{kind}</TYPE>\
+                 <NAME translate=\"true\">{name}</NAME><SX>1</SX><SY>1</SY><W>20</W><H>20</H>\
+                 <D>3.6576</D><PATH isanim=\"false\"></PATH><CHILDREN>{children}</CHILDREN>\
+                 <UUID_STR>{{{}}}</UUID_STR></NODE>",
+                uuid::Uuid::new_v4()
+            )
+        };
+        let closet = node(3, "Main Wiring Closet", (861, 300), "");
+        let office = node(BUILDING, "Corporate Office", (100, 100), &closet);
+        let city = node(1, "Home City", (200, 200), &office);
+        format!(
+            "<?xml version=\"1.0\"?><PACKETTRACER5><VERSION>9.0.1.0858</VERSION>\
+             <PHYSICALWORKSPACE>{}</PHYSICALWORKSPACE></PACKETTRACER5>",
+            node(0, "Intercity", (0, 0), &city)
+        )
     }
 
     #[test]

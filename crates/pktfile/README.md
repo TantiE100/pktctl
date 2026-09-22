@@ -38,10 +38,15 @@ byte ranges of the node it changes:
 |---|---|
 | `physical_nodes` | Lists every `<NODE>` of `PHYSICALWORKSPACE` with its `UUID_STR`, parent, kind and position. |
 | `rename_node` | Replaces a node's `NAME` text. |
-| `add_building` | Inserts a building copied from the empty 9.0.1 network. |
+| `add_building` | Inserts a building on Packet Tracer's building backdrop, with the size and scale its own toolbar gives one. |
 | `remove_node` | Cuts a node out with its children; refuses Intercity and any node that still holds a device (`TYPE` 6), since devices also live in the logical topology. |
 
+`add_node` writes the same fields Packet Tracer writes for a node its own
+toolbar creates; nothing is copied out of a Packet Tracer file, and this crate
+ships none. The unit tests build their own workspace XML. To exercise the codec
+against a real file, point `PKTCTL_TEST_PKT` at any `.pkt` and run the ignored
+tests in `tests/real_files.rs`.
+
 The format was documented by [Unpacket](https://github.com/Punkcake21/Unpacket)
-(MIT). `assets/empty-9.0.1.pkt` is an empty network saved by Packet
-Tracer 9.0.1, and the tests decode it and re-encode it. Files written by
-`encode` open in Packet Tracer 9.0.1; see the live tests in `crates/pktctl`.
+(MIT). Files written by `encode` open in Packet Tracer 9.0.1; see the live
+tests in `crates/pktctl`.
