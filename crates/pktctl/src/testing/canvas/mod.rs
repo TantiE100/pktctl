@@ -5,6 +5,7 @@ mod modules;
 mod network;
 mod physical;
 mod remote;
+mod services;
 mod simulation;
 mod wireless;
 mod workspace;
@@ -60,6 +61,7 @@ struct Device {
     running: Option<String>,
     access_radio: Option<wireless::Radio>,
     client: Option<wireless::Client>,
+    services: Option<services::Services>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
 }
@@ -88,6 +90,7 @@ impl Device {
             client: model
                 .has_port(models::PortKind::ClientRadio)
                 .then(wireless::Client::default),
+            services: (model.class == "Server").then(services::Services::default),
             powered: true,
             cards: vec![None; model.card_slots],
         }

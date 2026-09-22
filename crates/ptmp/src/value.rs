@@ -284,14 +284,17 @@ impl Value {
             }
             TypeCode::Data => {
                 let class = fields.next_owned("data class")?;
+                if let Some(address) = address_object(&class) {
+                    return Ok(address);
+                }
                 let mut values = Vec::new();
-                match crate::data::field_count(&class) {
-                    Some(count) => {
+                match crate::data::layout(&class) {
+                    crate::data::Layout::Fixed(count) => {
                         for _ in 0..count {
                             values.push(Self::decode(fields)?);
                         }
                     }
-                    None => {
+                    crate::data::Layout::Variable => {
                         while fields
                             .peek()
                             .is_some_and(|token| TypeCode::parse(token).is_ok())
@@ -299,6 +302,7 @@ impl Value {
                             values.push(Self::decode(fields)?);
                         }
                     }
+                    crate::data::Layout::NotAClass => return Ok(Self::String(class)),
                 }
                 Self::Data {
                     class,
@@ -307,6 +311,24 @@ impl Value {
             }
         })
     }
+}
+
+/// Value objects carry their addresses as type 16 with the address as the class token.
+fn address_object(token: &str) -> Option<Value> {
+    if let Ok(ip) = token.parse::<Ipv4Addr>() {
+        return Some(Value::Ip(ip));
+    }
+    if token.contains(':')
+        && let Ok(ip) = token.parse::<Ipv6Addr>()
+    {
+        return Some(Value::Ipv6(ip));
+    }
+    let groups: Vec<&str> = token.split('.').collect();
+    let mac = groups.len() == 3
+        && groups
+            .iter()
+            .all(|group| group.len() == 4 && group.chars().all(|digit| digit.is_ascii_hexdigit()));
+    mac.then(|| Value::Mac(token.to_owned()))
 }
 
 #[cfg(test)]
@@ -332,7 +354,29 @@ mod tests {
     }
 
     #[test]
+    fn addresses_inside_value_objects_decode_as_addresses() {
+        crate::data::register([("DnsRrATest".to_owned(), None)]);
+        let record = decode(&[
+            "16",
+            "DnsRrATest",
+            "8",
+            "www.gamc.bo",
+            "16",
+            "192.168.10.5",
+            "16",
+            "0001.C734.91D5",
+        ])
+        .unwrap();
+        let Value::Data { fields, .. } = record else {
+            panic!("expected data");
+        };
+        assert_eq!(fields[1], Value::Ip("192.168.10.5".parse().unwrap()));
+        assert_eq!(fields[2], Value::Mac("0001.C734.91D5".into()));
+    }
+
+    #[test]
     fn decodes_data_objects_by_layout_or_by_type_codes() {
+        crate::data::register([("FlowChartNodeTest".to_owned(), None)]);
         let node = [
             "16",
             "FlowChartNodeTest",
@@ -353,7 +397,7 @@ mod tests {
         assert_eq!(fields.len(), 4);
         assert_eq!(fields[3], Value::Int(3));
 
-        crate::data::register([("PairedDataTest".to_owned(), 1)]);
+        crate::data::register([("PairedDataTest".to_owned(), Some(1))]);
         let paired = decode(&["14", "16", "PairedDataTest", "8", "x", "4", "7"]).unwrap();
         let (first, second) = paired.into_pair().unwrap();
         assert_eq!(
@@ -364,6 +408,9 @@ mod tests {
             }
         );
         assert_eq!(second, Value::Int(7));
+
+        let text = decode(&["14", "16", "www.gamc.bo", "4", "7"]).unwrap();
+        assert_eq!(text.into_pair().unwrap().0, Value::string("www.gamc.bo"));
     }
 
     #[test]

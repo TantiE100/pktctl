@@ -188,7 +188,7 @@ READERS = {
 }
 
 
-def data_layouts(root, impls):
+def data_layouts(root, impls, classes):
     factory = javap(root, ["com.cisco.pt.impl.IPCResponseFactory"], "-c")
     wire = {}
     pending = None
@@ -200,16 +200,23 @@ def data_layouts(root, impls):
         if created and pending:
             wire[created.group(1).replace("/", ".")] = pending
             pending = None
-    layouts = {}
-    for block in split_blocks(javap(root, sorted(wire), "-c")):
+
+    raw, variable = {}, set()
+    impl_classes = [name for name in classes if name.endswith("Impl")]
+    for block in split_blocks(javap(root, impl_classes, "-c")):
         declaration = next((DECLARATION.match(line) for line in block if DECLARATION.match(line)), None)
+        if not declaration:
+            continue
         java_name = declaration.group(2)
-        interfaces = impls.get(java_name, [])
         for (method, params, _), body in method_blocks(block):
             if method != "read" or len(params) != 1:
                 continue
-            fields, backwards = [], False
+            entries = []
             for index, line in enumerate(body):
+                parent = re.search(r"invokespecial\s+#\d+\s+// Method ([\w/$]+Impl)\.read:", line)
+                if parent:
+                    entries.append(("super", parent.group(1).replace("/", ".")))
+                    continue
                 reader = re.search(r"Method (read\w+):", line)
                 if reader and reader.group(1) in READERS:
                     name = None
@@ -218,17 +225,37 @@ def data_layouts(root, impls):
                         if stored:
                             name = stored.group(1)
                             break
-                    fields.append({"name": name or f"field{len(fields)}", "kind": READERS[reader.group(1)]})
+                    entries.append(("field", {"name": name, "kind": READERS[reader.group(1)]}))
                 jump = re.search(r"^\s*(\d+): goto\s+(\d+)", line)
                 if jump and int(jump.group(2)) < int(jump.group(1)) and any(
                     re.search(r"Method read\w+:", later) for later in body[index:]
                 ):
-                    backwards = True
-            layouts[wire[java_name]] = {
-                "interface": interfaces[0] if interfaces else short(java_name)[:-4],
-                "fields": fields,
-                **({"variable": True} if backwards else {}),
-            }
+                    variable.add(java_name)
+            raw[java_name] = entries
+
+    def resolve(java_name, seen=()):
+        fields, loops = [], java_name in variable
+        for kind, value in raw.get(java_name, []):
+            if kind == "super" and value not in seen:
+                inherited, inherited_loops = resolve(value, seen + (java_name,))
+                fields.extend(inherited)
+                loops = loops or inherited_loops
+            elif kind == "field":
+                fields.append(dict(value))
+        return fields, loops
+
+    layouts = {}
+    for java_name, wire_name in wire.items():
+        fields, loops = resolve(java_name)
+        for position, field in enumerate(fields):
+            if not field["name"]:
+                field["name"] = f"field{position}"
+        interfaces = impls.get(java_name, [])
+        layouts[wire_name] = {
+            "interface": interfaces[0] if interfaces else short(java_name)[:-4],
+            "fields": fields,
+            **({"variable": True} if loops else {}),
+        }
     return layouts
 
 
@@ -339,7 +366,7 @@ def main(jar, output, javadoc=None):
                     wire.setdefault(target, {}).setdefault(method, []).append(found)
 
         docs = docs_from(javadoc)
-        layouts = data_layouts(root, impls)
+        layouts = data_layouts(root, impls, classes)
         index = {"classes": {}, "enums": dict(sorted(enums.items())), "roots": {}, "data": dict(sorted(layouts.items()))}
         for name, info in sorted(interfaces.items()):
             methods = []

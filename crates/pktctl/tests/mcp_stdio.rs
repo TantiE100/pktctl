@@ -13,7 +13,13 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 44] = [
+const TOOLS: [&str; 50] = [
+    "add_server_user",
+    "configure_dhcp_server",
+    "configure_dns_server",
+    "list_server_services",
+    "set_server_service",
+    "set_web_page",
     "configure_access_point",
     "connect_wireless",
     "wireless_status",
@@ -613,6 +619,28 @@ async fn joins_a_secured_wireless_network_end_to_end() {
     assert_eq!(joined["associated"], true, "{joined}");
     assert_eq!(joined["access_point"], "AP");
     std::fs::remove_file(joined["file"].as_str().unwrap()).unwrap();
+}
+
+#[tokio::test]
+async fn configures_server_services_end_to_end() {
+    let (_canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "Server-PT", "name": "SRV" }))
+        .await;
+    let dns = client
+        .call_tool(
+            "configure_dns_server",
+            json!({ "device": "SRV", "records": [{ "name": "www.gamc.bo", "type": "A", "value": "192.168.10.5" }] }),
+        )
+        .await;
+    assert_eq!(
+        dns["structuredContent"]["records"][0]["value"], "192.168.10.5",
+        "{dns}"
+    );
+    let listed = client
+        .call_tool("list_server_services", json!({ "device": "SRV" }))
+        .await;
+    assert_eq!(listed["structuredContent"]["services"][1]["enabled"], true);
 }
 
 #[tokio::test]

@@ -5,7 +5,7 @@ use ptmp::{Step, TypeCode, Value};
 use super::{
     Endpoint, Port, State, console, modules, physical,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
-    wireless,
+    services, wireless,
 };
 
 pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote> {
@@ -62,7 +62,12 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
         }
         ("getProcess", rest) => {
             let name = string_arg(step, class)?.to_owned();
-            wireless::process(state, index, &name, rest)
+            match state.devices[index].services.as_mut() {
+                Some(services_state) if services::serves(&name) => {
+                    services::process(services_state, &name, rest)
+                }
+                _ => wireless::process(state, index, &name, rest),
+            }
         }
         ("getPhysicalObject", rest) => {
             no_args(step, class)?;

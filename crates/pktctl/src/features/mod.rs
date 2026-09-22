@@ -10,6 +10,7 @@ pub(crate) mod network_file;
 pub mod paths;
 pub mod physical;
 pub mod power;
+pub mod services;
 pub mod setup;
 pub mod simulation;
 pub mod status;
