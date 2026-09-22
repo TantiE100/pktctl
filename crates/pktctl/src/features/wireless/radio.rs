@@ -10,7 +10,7 @@ use crate::{
         hosts::{HostConfigRequest, configure},
         network_file::{edit_saved_network, file_error},
         paths::device,
-        physical::{MoveRequest, Snapshot, move_to_location},
+        physical::{MoveRequest, SCENE, Snapshot, move_to_location},
         power::fast_forward,
     },
     packet_tracer::{
@@ -438,12 +438,20 @@ async fn bring_access_point<P: PacketTracer>(
             device: Some(nearest.clone()),
             location: None,
             into: parent,
-            x: i32::try_from(spot.x + BESIDE_CLIENT).ok(),
-            y: i32::try_from(spot.y).ok(),
+            #[allow(clippy::cast_precision_loss)]
+            x_percent: Some(percent(spot.x + BESIDE_CLIENT, SCENE.0)),
+            #[allow(clippy::cast_precision_loss)]
+            y_percent: Some(percent(spot.y, SCENE.1)),
         },
     )
     .await?;
     Ok(Some(nearest))
+}
+
+/// The share of the room a coordinate sits at, which is how moves are expressed.
+#[allow(clippy::cast_precision_loss)]
+fn percent(value: i64, scene: f64) -> f64 {
+    (value as f64 / scene * 100.0).clamp(0.0, 100.0)
 }
 
 async fn diagnose<P: PacketTracer>(

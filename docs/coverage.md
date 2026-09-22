@@ -29,7 +29,7 @@ Validation levels:
 | Desktop apps without an IPC call: PPPoE Dialer, MIB Browser, IP Communicator, Dial-up, Traffic Generator, Terminal, IOx IDE | see [desktop](../crates/pktctl/src/features/desktop/README.md#what-cannot-be-driven) | none |
 | End-device Command Prompt | `run_host_command` | live |
 | Files | `save_network`, `open_network`, `new_network` | live |
-| Canvas image and notes; physical workspace and window captures | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
+| Canvas image, notes and drawings; physical workspace and window captures | `screenshot`, `add_note`, `list_notes`, `remove_note`, `draw`, `list_drawings`, `remove_drawing` | live |
 | Any IPC method | `describe_ipc`, `call_ipc` | live |
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
 | Physical workspace: buildings, furniture (racks, tables, shelves, pegboards), renaming, deleting, placing devices on furniture (not in the IPC API) | `add_location`, `rename_location`, `remove_location`, `move_to_location`, `arrange_devices`, through `.pkt` editing | live |

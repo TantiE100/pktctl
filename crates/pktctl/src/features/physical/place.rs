@@ -12,6 +12,9 @@ use crate::{
 };
 
 const MAX_CLIMB: usize = 12;
+/// Packet Tracer draws the contents of a container across a scene of this size and keeps
+/// each device's position as a fraction of it, so positions are given as percentages.
+pub(crate) const SCENE: (f64, f64) = (3444.0, 2157.0);
 const CONTAINER_KINDS_FOR_CLOSETS: &[&str] = &["universe", "city", "building"];
 /// Where Packet Tracer puts a device dropped into a wiring closet: the rack of the
 /// default closets, the table of new ones.
@@ -97,11 +100,11 @@ pub struct AddLocationRequest {
     /// `Home City/Corporate Office`. Omit for Intercity. Cities always go in Intercity.
     #[serde(default)]
     pub inside: Option<String>,
-    /// Optional position inside its parent.
+    /// Where to put it inside its parent, as a percentage of the room's width and height.
     #[serde(default)]
-    pub x: Option<i32>,
+    pub x_percent: Option<f64>,
     #[serde(default)]
-    pub y: Option<i32>,
+    pub y_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
@@ -116,11 +119,12 @@ pub struct MoveRequest {
     /// Devices moved into a wiring closet land on its rack or table, as Packet Tracer
     /// places them.
     pub into: String,
-    /// Optional position inside the destination.
+    /// Where to leave it inside the destination, as a percentage of the room's width and
+    /// height: 50 and 50 is the middle.
     #[serde(default)]
-    pub x: Option<i32>,
+    pub x_percent: Option<f64>,
     #[serde(default)]
-    pub y: Option<i32>,
+    pub y_percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -163,14 +167,9 @@ pub async fn add_location<P: PacketTracer>(
         .map(str::trim)
         .filter(|name| !name.is_empty());
     if let Some(kind) = request.kind.type_code() {
-        let position = match (request.x, request.y) {
-            (Some(x), Some(y)) => (x, y),
-            (None, None) => DEFAULT_POSITION,
-            _ => {
-                return Err(PtError::InvalidInput(
-                    "give both x and y, or neither".into(),
-                ));
-            }
+        let position = match percent_spot(request.x_percent, request.y_percent)? {
+            Some(spot) => spot,
+            None => DEFAULT_POSITION,
         };
         let target_path = target.path.clone();
         return add_node(
@@ -206,7 +205,12 @@ pub async fn add_location<P: PacketTracer>(
     let target_path = target.path.clone();
     let handle = object(&created);
     descend(packet_tracer, &handle, "", &target_path).await?;
-    place_at(packet_tracer, &handle, request.x, request.y).await?;
+    place_at(
+        packet_tracer,
+        &handle,
+        percent_spot(request.x_percent, request.y_percent)?,
+    )
+    .await?;
     if let Some(name) = name {
         packet_tracer
             .call(handle.clone().method("setName", [Value::qstring(name)]))
@@ -256,15 +260,7 @@ pub async fn move_to_location<P: PacketTracer>(
             packet_tracer,
             &subject,
             &target,
-            match (request.x, request.y) {
-                (Some(x), Some(y)) => Some((x, y)),
-                (None, None) => None,
-                _ => {
-                    return Err(PtError::InvalidInput(
-                        "give both x and y, or neither".into(),
-                    ));
-                }
-            },
+            percent_spot(request.x_percent, request.y_percent)?,
         )
         .await;
     }
@@ -275,7 +271,12 @@ pub async fn move_to_location<P: PacketTracer>(
     };
     let current_parent = climb(packet_tracer, &snapshot, &handle, &subject, &target.path).await?;
     descend(packet_tracer, &handle, &current_parent, &target.path).await?;
-    place_at(packet_tracer, &handle, request.x, request.y).await?;
+    place_at(
+        packet_tracer,
+        &handle,
+        percent_spot(request.x_percent, request.y_percent)?,
+    )
+    .await?;
 
     let finished = Snapshot::read(packet_tracer).await?;
     let moved = match &subject.device {
@@ -403,26 +404,44 @@ async fn descend<P: PacketTracer>(
     Ok(())
 }
 
+/// Turns percentages of the room into the coordinates Packet Tracer stores.
+pub(crate) fn percent_spot(x: Option<f64>, y: Option<f64>) -> Result<Option<(i32, i32)>, PtError> {
+    let (Some(x), Some(y)) = (x, y) else {
+        if x.is_some() || y.is_some() {
+            return Err(PtError::InvalidInput(
+                "give both x_percent and y_percent, or neither".into(),
+            ));
+        }
+        return Ok(None);
+    };
+    if !(0.0..=100.0).contains(&x) || !(0.0..=100.0).contains(&y) {
+        return Err(PtError::InvalidInput(
+            "x_percent and y_percent are percentages of the room, between 0 and 100".into(),
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Ok(Some((
+        (x / 100.0 * SCENE.0).round() as i32,
+        (y / 100.0 * SCENE.1).round() as i32,
+    )))
+}
+
 async fn place_at<P: PacketTracer>(
     packet_tracer: &P,
     handle: &Call,
-    x: Option<i32>,
-    y: Option<i32>,
+    spot: Option<(i32, i32)>,
 ) -> Result<(), PtError> {
-    match (x, y) {
-        (Some(x), Some(y)) => packet_tracer
-            .call(
-                handle
-                    .clone()
-                    .method("moveTo", [Value::Int(x), Value::Int(y)]),
-            )
-            .await
-            .map(drop),
-        (None, None) => Ok(()),
-        _ => Err(PtError::InvalidInput(
-            "give both x and y, or neither".into(),
-        )),
-    }
+    let Some((x, y)) = spot else {
+        return Ok(());
+    };
+    packet_tracer
+        .call(
+            handle
+                .clone()
+                .method("moveTo", [Value::Int(x), Value::Int(y)]),
+        )
+        .await
+        .map(drop)
 }
 
 fn label(kind: NewLocation) -> &'static str {

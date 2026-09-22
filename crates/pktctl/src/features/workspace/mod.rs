@@ -1,3 +1,4 @@
+mod drawings;
 mod files;
 mod notes;
 mod screenshot;
@@ -9,6 +10,9 @@ use rmcp::{
     tool, tool_router,
 };
 
+pub use drawings::{
+    DrawRequest, Drawing, DrawingItem, DrawingList, Drawn, draw, list_drawings, remove_drawing,
+};
 pub use files::{
     Cleared, NewRequest, OpenRequest, Opened, SaveRequest, Saved, new_network, open, save,
 };
@@ -106,6 +110,60 @@ impl<P: PacketTracer> PktctlServer<P> {
     }
 
     #[tool(
+        name = "draw",
+        description = "Draw on the logical canvas: a `circle` around a subnet or group, or a \
+                       `line` to mark a boundary, in the colour you name (`red`, `blue`, \
+                       `green`, ... or `#rrggbb`). Returns the drawing's id, which \
+                       `remove_drawing` takes.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn draw_tool(
+        &self,
+        Parameters(request): Parameters<DrawRequest>,
+    ) -> Result<Json<Drawn>, String> {
+        draw(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "list_drawings",
+        description = "List the circles and lines drawn on the logical canvas with their ids \
+                       and positions.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn list_drawings_tool(&self) -> Result<Json<DrawingList>, String> {
+        list_drawings(self.packet_tracer())
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "remove_drawing",
+        description = "Remove a circle or line from the logical canvas by id.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn remove_drawing_tool(
+        &self,
+        Parameters(request): Parameters<NoteRef>,
+    ) -> Result<Json<NoteRemoved>, String> {
+        remove_drawing(self.packet_tracer(), &request.id)
+            .await
+            .map(|removed| Json(NoteRemoved { removed }))
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
         name = "add_note",
         description = "Write a text note on the logical canvas, for example to label a subnet or \
                        a VLAN. Returns the note with its id.",
@@ -173,6 +231,74 @@ mod tests {
         packet_tracer::{PtError, scripted::ScriptedPacketTracer},
         testing::{Canvas, FakeDesktop},
     };
+
+    #[tokio::test]
+    async fn draws_circles_and_lines_and_takes_them_back() {
+        let (_canvas, packet_tracer) = canvas();
+        let circle = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Circle,
+                x: 250,
+                y: 400,
+                radius: Some(120),
+                color: Some("green".into()),
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(circle.color, "#28963c");
+
+        let line = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Line,
+                x: 100,
+                y: 100,
+                to_x: Some(600),
+                to_y: Some(100),
+                color: Some("#ff8800".into()),
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(line.color, "#ff8800");
+
+        let drawings = list_drawings(&packet_tracer).await.unwrap().drawings;
+        assert_eq!(drawings.len(), 2);
+        assert_eq!(
+            drawings
+                .iter()
+                .find(|item| item.id == circle.id)
+                .map(|item| (item.shape, item.x, item.y)),
+            Some((Drawing::Circle, 250, 400))
+        );
+
+        let missing_ends = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Line,
+                x: 10,
+                y: 10,
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(missing_ends.to_string().contains("to_x"), "{missing_ends}");
+
+        remove_drawing(&packet_tracer, &circle.id).await.unwrap();
+        assert_eq!(
+            list_drawings(&packet_tracer).await.unwrap().drawings.len(),
+            1
+        );
+        let gone = remove_drawing(&packet_tracer, &circle.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(gone, PtError::NotFound(_)), "{gone}");
+    }
 
     fn canvas() -> (Arc<Canvas>, ScriptedPacketTracer) {
         let canvas = Arc::new(Canvas::new());

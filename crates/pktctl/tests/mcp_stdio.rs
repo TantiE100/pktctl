@@ -13,7 +13,7 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 69] = [
+const TOOLS: [&str; 72] = [
     "unlock_activity",
     "activity_instructions",
     "activity_status",
@@ -64,12 +64,15 @@ const TOOLS: [&str; 69] = [
     "arrange_devices",
     "connect",
     "disconnect",
+    "draw",
     "list_devices",
+    "list_drawings",
     "list_links",
     "list_models",
     "list_ports",
     "move_device",
     "remove_device",
+    "remove_drawing",
     "remove_location",
     "configure_host_ipv6",
     "set_host_firewall",

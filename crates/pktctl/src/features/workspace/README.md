@@ -10,6 +10,8 @@ Files, screenshots and canvas notes.
 | `open_network` | absolute `path`, optional `save_current_to` | `{ path, devices }` |
 | `new_network` | optional `save_current_to` | `{ cleared: true }` |
 | `screenshot` | optional absolute `save_to` (`.png`) | the PNG as MCP image content |
+| `draw` | Draws a circle or a line on the canvas, in a named colour or `#rrggbb`. |
+| `list_drawings`, `remove_drawing` | The circles and lines on the canvas, and how to take one back. |
 | `add_note` | `x`, `y`, `text` | the note with its id |
 | `list_notes` | optional `include_port_labels` | notes with ids and positions |
 | `remove_note` | `id` | `{ removed: id }` |
