@@ -12,6 +12,7 @@ pub use file_edit::{
 pub use place::{
     AddLocationRequest, MoveRequest, Moved, NewLocation, add_location, move_to_location,
 };
+pub(crate) use tree::Snapshot;
 pub use tree::{Location, LocationList};
 
 use crate::{

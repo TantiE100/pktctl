@@ -117,6 +117,7 @@ mod tests {
             ssid: "GAMC".into(),
             security: Security::Wpa2Psk,
             key: Some(key.into()),
+            bring_access_point: false,
             ip: Some("192.168.50.20".into()),
             mask: Some("255.255.255.0".into()),
             gateway: Some("192.168.50.1".into()),
@@ -169,6 +170,53 @@ mod tests {
         assert!(!connection.associated);
         assert!(connection.access_point.is_none());
         std::fs::remove_file(connection.file).unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn explains_range_and_brings_the_access_point_when_asked() {
+        let packet_tracer = lab().await;
+        configure_access_point(&packet_tracer, &secure_ap("clave1234"))
+            .await
+            .unwrap();
+        crate::features::physical::move_to_location(
+            &packet_tracer,
+            &crate::features::physical::MoveRequest {
+                device: Some("AP".into()),
+                into: "Home City/Corporate Office".into(),
+                x: Some(900),
+                y: Some(0),
+                ..crate::features::physical::MoveRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let far = connect_wireless(&packet_tracer, &join("clave1234"))
+            .await
+            .unwrap();
+        assert!(!far.associated);
+        let diagnosis = far.diagnosis.unwrap();
+        assert!(diagnosis.contains("AP is 900 units away"), "{diagnosis}");
+        assert!(diagnosis.contains("bring_access_point"));
+
+        let brought = connect_wireless(
+            &packet_tracer,
+            &ConnectWirelessRequest {
+                bring_access_point: true,
+                ..join("clave1234")
+            },
+        )
+        .await
+        .unwrap();
+        assert!(brought.associated);
+        assert_eq!(brought.moved_access_point.as_deref(), Some("AP"));
+        std::fs::remove_file(brought.file).unwrap();
+
+        let wrong = connect_wireless(&packet_tracer, &join("incorrecta"))
+            .await
+            .unwrap();
+        assert!(wrong.diagnosis.unwrap().contains("check the security"));
+        std::fs::remove_file(wrong.file).unwrap();
     }
 
     #[tokio::test]
