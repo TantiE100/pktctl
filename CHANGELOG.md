@@ -7,7 +7,18 @@ share one version.
 
 ## Unreleased
 
-Nothing yet.
+### Changed
+
+- The IPC index generator is a Rust crate, `tools/ipc-index`, and reads the
+  class files out of the framework jar itself. It needs no JDK and no `javap`,
+  and `make check` now compiles, lints and tests it with everything else.
+
+### Fixed
+
+- A method taking a generic argument was recorded as taking two: the old
+  generator split the printed Java types on every comma, so
+  `OSPFAreaNetwork.setIpAndMask(Pair<IPAddress,IPAddress>)` came out with two
+  parameters and a parameter named `Pair<IPAddress`.
 
 ## 0.1.0 - 2026-09-22
 
@@ -52,6 +63,6 @@ workspaces, validated against Packet Tracer 9.0.1 on macOS.
 ### Notes
 
 - No Packet Tracer code, file or documentation is redistributed. The IPC index
-  carries signatures only; `tools/ipc-index/generate.py --with-summaries`
+  carries signatures only; `cargo run -p ipc-index -- ... --with-summaries`
   rebuilds a local one with Cisco's Javadoc prose for your own use.
 - Windows and Linux are untested: every live check so far ran on macOS.

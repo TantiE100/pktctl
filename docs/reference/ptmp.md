@@ -119,11 +119,15 @@ Packet Tracer ships the official framework inside its installation:
 <Packet Tracer>/help/default/ipc/pt-cep-java-framework-<version>-docs.zip
 ```
 
-- Method names and Java types: `javap -cp <jar> com.cisco.pt.ipc.sim.Device`.
+- Everything below is already in the index, which
+  [tools/ipc-index](../../tools/ipc-index/README.md) builds from that jar; read
+  it with `describe_ipc` before digging into the framework by hand.
+- Method names and Java types: the interface class in the jar, or `describe_ipc
+  class`.
 - String flavour of each argument: the `*Impl` class delegates to
   `com.cisco.pt.ipc.IPCFactory`, whose bytecode calls either
   `createStringParameterMessage` (8) or `createQStringParameterMessage` (9).
-- Enum integers: `javap -c` on the enum. Each constant is built as
+- Enum integers: the enum's class initialiser. Each constant is built as
   `(name, ordinal, value)` and the wire uses the **value**, which is not always
   the ordinal. `DeviceType` values match their ordinals (`ROUTER=0`, `SWITCH=1`,
   `ACCESS_POINT=7`, `PC=8`), but `ConnectType` starts at 8100
