@@ -1,4 +1,5 @@
 mod catalog;
+mod console;
 mod models;
 mod modules;
 mod network;
@@ -10,7 +11,7 @@ use std::{
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use ptmp::{Call, Value};
+use ptmp::{Call, Event, Value};
 
 use models::{Model, PortKind, model};
 pub use remote::Remote;
@@ -49,6 +50,8 @@ struct Device {
     ports: Vec<Port>,
     cli: Vec<(String, String)>,
     console_prompt: String,
+    console_mode: &'static str,
+    paged: Option<String>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
 }
@@ -67,6 +70,8 @@ impl Device {
             ports,
             cli: Vec::new(),
             console_prompt: model.first_prompt.to_owned(),
+            console_mode: "user",
+            paged: None,
             powered: true,
             cards: vec![None; model.card_slots],
         }
@@ -112,6 +117,7 @@ struct State {
     next_note: u32,
     current_file: String,
     files: std::collections::HashMap<String, Network>,
+    events: Vec<Event>,
 }
 
 impl State {
@@ -205,6 +211,21 @@ impl Canvas {
             .map(|device| device.console_prompt.clone())
     }
 
+    pub fn reset_console(&self, device: &str) {
+        if let Some(device) = self
+            .state()
+            .devices
+            .iter_mut()
+            .find(|candidate| candidate.name == device)
+        {
+            device
+                .model()
+                .first_prompt
+                .clone_into(&mut device.console_prompt);
+            device.console_mode = "user";
+        }
+    }
+
     pub fn installed_cards(&self, device: &str) -> Vec<Option<String>> {
         self.state()
             .devices
@@ -265,6 +286,10 @@ impl Canvas {
             "systemFileManager" => workspace::files(&state, &steps[1..]),
             other => Err(Remote::unknown_method("IPC", other)),
         }
+    }
+
+    pub fn take_events(&self) -> Vec<Event> {
+        std::mem::take(&mut self.state().events)
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
