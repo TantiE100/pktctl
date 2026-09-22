@@ -101,6 +101,7 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
                     .clone_into(&mut device.console_prompt);
                 device.console_mode = "user";
                 device.paged = None;
+                device.running = None;
             }
             device.powered = on;
             Ok(Value::Void)

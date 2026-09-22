@@ -9,6 +9,9 @@ use super::{
 const CLASS: &str = "TerminalLine";
 const INVALID: i32 = 2;
 const PAGE_BREAK: &str = "!\n";
+const MORE: &str = " --More-- ";
+const SPACE: i8 = 32;
+const CTRL_SHIFT_6: i8 = 30;
 
 pub(super) fn handle(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remote> {
     let [step] = steps else {
@@ -34,7 +37,11 @@ pub(super) fn handle(state: &mut State, index: usize, steps: &[Step]) -> Result<
         }
         "enterChar" => {
             check_args(step, CLASS, &[TypeCode::Byte, TypeCode::Int])?;
-            next_page(state, index);
+            match step.args[0] {
+                Value::Byte(SPACE) => next_page(state, index),
+                Value::Byte(CTRL_SHIFT_6) => interrupt(state, index),
+                _ => {}
+            }
             Ok(Value::Void)
         }
         other => Err(Remote::unknown_method(CLASS, other)),
@@ -83,6 +90,8 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
     };
 
     if keystroke == "debug hang" {
+        events.push(written(&terminal, "waiting forever\n"));
+        device.running = Some(keystroke.to_owned());
         state.events.extend(events);
         return;
     }
@@ -110,6 +119,7 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
     } else if keystroke == "show running-config" {
         events.push(written(&terminal, &format!("hostname {hostname}\n")));
         events.push(written(&terminal, PAGE_BREAK));
+        events.push(written(&terminal, MORE));
         events.push(terminal_event(
             &terminal,
             "moreDisplayed",
@@ -134,6 +144,19 @@ fn next_page(state: &mut State, index: usize) {
     };
     state.events.extend([
         written(&terminal, "end\n"),
+        ended(&terminal, &command, 0),
+        written(&terminal, &device.console_prompt),
+    ]);
+}
+
+fn interrupt(state: &mut State, index: usize) {
+    let device = &mut state.devices[index];
+    let terminal = terminal_id(&device.name);
+    let Some(command) = device.running.take() else {
+        return;
+    };
+    state.events.extend([
+        written(&terminal, "\n"),
         ended(&terminal, &command, 0),
         written(&terminal, &device.console_prompt),
     ]);

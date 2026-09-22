@@ -52,6 +52,7 @@ struct Device {
     console_prompt: String,
     console_mode: &'static str,
     paged: Option<String>,
+    running: Option<String>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
 }
@@ -72,6 +73,7 @@ impl Device {
             console_prompt: model.first_prompt.to_owned(),
             console_mode: "user",
             paged: None,
+            running: None,
             powered: true,
             cards: vec![None; model.card_slots],
         }
