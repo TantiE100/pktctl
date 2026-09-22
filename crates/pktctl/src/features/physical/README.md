@@ -8,10 +8,11 @@ where each device sits.
 | Tool | What it does |
 |---|---|
 | `list_locations` | Every location with its path, kind, position and the devices directly inside it. |
-| `add_location` | Creates a city (in Intercity) or a wiring closet (in Intercity, a city or a building). |
+| `add_location` | Creates a city, a building, a wiring closet or furniture: `rack`, `table`, `shelf`, `cable_pegboard`, `container`. Cities and closets use Packet Tracer's buttons; the rest are written into the network file with the same fields its own buttons write. |
 | `move_to_location` | Moves a device or a whole location to another location, optionally to an `x`/`y` inside it. |
 | `rename_location` | Renames any location, including `City#2`-style duplicates. |
-| `add_building` | Creates a named building inside a city. |
+| `arrange_devices` | Lays devices out in rows inside a room, a building or a piece of furniture. |
+| `set_background` | Papers a location, or the logical workspace, with one of Packet Tracer's backgrounds or an image of yours. |
 | `remove_location` | Deletes a city, building, closet or rack with everything inside. Devices must be moved out first; the Power Distribution Devices Packet Tracer puts in racks are removed with it. |
 | `show_workspace` | Switches the main window between the logical and the physical workspace. |
 
@@ -44,6 +45,20 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
   when leaving a rack, and `moveIntoObject(name)` enters a sibling. The tool
   climbs to the common ancestor of the source and the destination, then enters
   each remaining level by name, and finally reads the tree back to confirm.
+- **Furniture takes devices only through the file.** Packet Tracer mounts
+  anything dropped into a wiring closet in that closet's first rack, so its
+  API cannot put a device on a table, a shelf or a second rack.
+  `move_to_location` and `arrange_devices` write those moves into the network
+  instead, keeping the three places Packet Tracer stores a device's physical
+  path in step (`PHYSICAL`, `PARENT_PATH` and `CONTAINER_ID`); a file whose
+  chains disagree is refused as *corrupted Physical Workspace data*.
+- **Positions inside a container are small numbers**, not metres: Packet
+  Tracer stores them as a fraction of the container, so 0 to about 40 covers a
+  room. `arrange_devices` starts at 200 and spaces by 150 for rooms, which
+  Packet Tracer clamps into that range.
+- **Colours**: Packet Tracer cannot paint a device's icon; `fillColor` only
+  applies to IoT components. Rooms and the logical workspace take background
+  images instead (`set_background`).
 - **Racks and tables**: a device moved into a wiring closet lands where
   Packet Tracer puts it: in the rack of the default closets, which gains a new
   Power Distribution Device when it has none, or on the table of a closet made

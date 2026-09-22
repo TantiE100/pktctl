@@ -15,7 +15,7 @@ its logic, its MCP adapter, its tests and a README.
 | Hosts | `configure_host`, `configure_host_ipv6`, `set_host_firewall` | [features/hosts](../../crates/pktctl/src/features/hosts/README.md) |
 | Desktop apps | `browse_web`, `configure_email`, `send_email`, `receive_email`, `vpn_client`, `host_files` | [features/desktop](../../crates/pktctl/src/features/desktop/README.md) |
 | Host console | `run_host_command` | [features/host_console](../../crates/pktctl/src/features/host_console/README.md) |
-| Physical | `list_locations`, `add_location`, `add_building`, `rename_location`, `remove_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
+| Physical | `list_locations`, `add_location`, `rename_location`, `remove_location`, `arrange_devices`, `set_background`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
 | Simulation | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | [features/simulation](../../crates/pktctl/src/features/simulation/README.md) |
 | Power | `set_power`, `fast_forward`, `power_cycle_all` | [features/power](../../crates/pktctl/src/features/power/README.md) |
 | Wireless | `configure_access_point`, `connect_wireless`, `wireless_status` | [features/wireless](../../crates/pktctl/src/features/wireless/README.md) |

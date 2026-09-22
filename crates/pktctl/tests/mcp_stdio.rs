@@ -13,7 +13,7 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 68] = [
+const TOOLS: [&str; 69] = [
     "unlock_activity",
     "activity_instructions",
     "activity_status",
@@ -34,12 +34,12 @@ const TOOLS: [&str; 68] = [
     "wireless_status",
     "fast_forward",
     "power_cycle_all",
+    "set_background",
     "set_power",
     "add_pdu",
     "list_simulation_events",
     "simulation_mode",
     "simulation_step",
-    "add_building",
     "rename_location",
     "add_location",
     "list_locations",
@@ -61,6 +61,7 @@ const TOOLS: [&str; 68] = [
     "configure_ios",
     "configure_host",
     "add_device",
+    "arrange_devices",
     "connect",
     "disconnect",
     "list_devices",
@@ -570,7 +571,7 @@ async fn places_devices_in_the_physical_workspace_end_to_end() {
         )
         .await;
     assert_eq!(
-        closet["structuredContent"]["path"],
+        closet["structuredContent"]["location"]["path"],
         "Home City/Corporate Office/Wiring Closet"
     );
     let moved = client

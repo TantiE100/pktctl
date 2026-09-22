@@ -32,7 +32,8 @@ Validation levels:
 | Canvas image and notes; physical workspace and window captures | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
 | Any IPC method | `describe_ipc`, `call_ipc` | live |
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
-| Physical workspace: renaming locations, creating buildings, deleting locations (not in the IPC API) | `rename_location`, `add_building`, `remove_location`, through `.pkt` editing | live |
+| Physical workspace: buildings, furniture (racks, tables, shelves, pegboards), renaming, deleting, placing devices on furniture (not in the IPC API) | `add_location`, `rename_location`, `remove_location`, `move_to_location`, `arrange_devices`, through `.pkt` editing | live |
+| Physical workspace: backgrounds and layout | `set_background`, `arrange_devices` | live |
 | Simulation mode, simple PDUs, stepping, event list with decisions | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | live |
 | Complex PDUs, scenarios, event-list GUI filters, play speed | `call_ipc` | ipc |
 | Device power, fast forward, power cycling | `set_power`, `fast_forward`, `power_cycle_all` | live |
@@ -53,7 +54,7 @@ What the API does not offer, and how pktctl handles it:
 
 | Need | In the IPC API? | pktctl |
 |---|---|---|
-| Rename a physical location, create a building, delete a location | No | `rename_location`, `add_building`, `remove_location` take the network as bytes (`fileSaveToBytes`), edit them and open the result as a temporary copy; your file is never written. |
+| Rename a physical location, create a building or furniture, delete a location, put a device on a table | No | `rename_location`, `add_location`, `remove_location`, `move_to_location` take the network as bytes (`fileSaveToBytes`), edit them and open the result as a temporary copy; your file is never written. |
 | Connect a wireless client to a chosen network | `setCurrentProfile` exists but fails in 9.0.1, and clients only associate when their radio starts | `connect_wireless` does the same with the client's current profile. |
 | Point the open network back at your own file after such an edit | No call sets the open file's name | The reply names the temporary copy; `save_network` with your path keeps the change. |
 | Register pktctl as an external application | No | `setup_exapp` builds the file; adding it is one click in Packet Tracer. |

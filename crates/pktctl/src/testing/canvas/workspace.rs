@@ -32,6 +32,14 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             }
             Ok(Value::Void)
         }
+        ["getActiveWorkspace", "setLogicalBackgroundPath"] => {
+            check_args(&steps[1], "Workspace", &[TypeCode::QString, TypeCode::Bool])?;
+            steps[1].args[0]
+                .as_str()
+                .unwrap_or_default()
+                .clone_into(&mut state.logical_background);
+            Ok(Value::Void)
+        }
         ["isPhysicalMode"] => Ok(Value::Bool(state.physical_mode)),
         ["fileSaveToBytes"] => {
             state.exported = Some(state.snapshot());

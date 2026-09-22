@@ -340,16 +340,19 @@ async fn places_devices_in_the_physical_workspace() {
     .await;
 
     let city = ok(&mut client, "add_location", json!({ "kind": "city" })).await;
-    let city_path = city["path"].as_str().unwrap().to_owned();
+    let city_path = city["location"]["path"].as_str().unwrap().to_owned();
     let closet = ok(
         &mut client,
         "add_location",
         json!({ "kind": "wiring_closet", "inside": city_path, "x": 120, "y": 80 }),
     )
     .await;
-    let closet_path = closet["path"].as_str().unwrap().to_owned();
+    let closet_path = closet["location"]["path"].as_str().unwrap().to_owned();
     assert_eq!(
-        (closet["x"].as_i64(), closet["y"].as_i64()),
+        (
+            closet["location"]["x"].as_i64(),
+            closet["location"]["y"].as_i64()
+        ),
         (Some(120), Some(80))
     );
 
@@ -387,8 +390,9 @@ async fn places_devices_in_the_physical_workspace() {
     assert_eq!(renamed["location"]["path"], "Cochabamba", "{renamed}");
     let building = ok(
         &mut client,
-        "add_building",
-        json!({ "inside": "Cochabamba", "name": "Alcaldía GAMC", "x": 400, "y": 150 }),
+        "add_location",
+        json!({ "kind": "building", "inside": "Cochabamba", "name": "Alcaldía GAMC",
+                "x": 400, "y": 150 }),
     )
     .await;
     assert_eq!(building["location"]["path"], "Cochabamba/Alcaldía GAMC");
@@ -1114,6 +1118,77 @@ async fn answers_console_questions() {
 
 #[tokio::test]
 #[ignore = "needs a running Packet Tracer"]
+async fn furnishes_a_room_and_arranges_it() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    for model in ["2911", "2960-24TT"] {
+        let name = if model == "2911" { ROUTER } else { SWITCH };
+        ok(
+            &mut client,
+            "add_device",
+            json!({ "model": model, "name": name }),
+        )
+        .await;
+    }
+    let locations = ok(&mut client, "list_locations", json!({})).await;
+    let closet = locations["locations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|location| location["kind"] == "wiring_closet")
+        .and_then(|location| location["path"].as_str())
+        .expect("every network has a wiring closet")
+        .to_owned();
+    let closet = closet.as_str();
+    let table = ok(
+        &mut client,
+        "add_location",
+        json!({ "kind": "table", "inside": closet, "name": "E2E Mesa", "x": 5, "y": 5 }),
+    )
+    .await;
+    assert_eq!(table["location"]["kind"], "stackable_table", "{table}");
+    assert!(table["file"].is_string(), "furniture goes through the file");
+
+    let onto = ok(
+        &mut client,
+        "arrange_devices",
+        json!({ "location": format!("{closet}/E2E Mesa"), "devices": [ROUTER, SWITCH],
+                "columns": 2, "spacing_x": 4, "start_x": 2, "start_y": 2 }),
+    )
+    .await;
+    assert_eq!(onto["devices"][0]["device"], ROUTER, "{onto}");
+    let locations = ok(&mut client, "list_locations", json!({})).await;
+    let mesa = locations["locations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|location| location["name"] == "E2E Mesa")
+        .unwrap();
+    let devices = mesa["devices"].as_array().unwrap();
+    assert!(
+        devices.iter().any(|device| device == ROUTER) && devices.iter().any(|d| d == SWITCH),
+        "{mesa}"
+    );
+
+    let paper = ok(
+        &mut client,
+        "set_background",
+        json!({ "location": closet, "image": "grid_50x50", "tiled": true }),
+    )
+    .await;
+    assert_eq!(paper["image"], "../art/Background/grid_50x50.png");
+
+    remove_leftovers(&mut client).await;
+    ok(
+        &mut client,
+        "remove_location",
+        json!({ "path": format!("{closet}/E2E Mesa") }),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
 async fn removes_physical_locations() {
     let mut client = live_client().await;
     remove_leftovers(&mut client).await;
@@ -1132,7 +1207,7 @@ async fn removes_physical_locations() {
         ok(&mut client, "remove_location", json!({ "path": stale })).await;
     }
     let city = ok(&mut client, "add_location", json!({ "kind": "city" })).await;
-    let city_path = city["path"].as_str().unwrap().to_owned();
+    let city_path = city["location"]["path"].as_str().unwrap().to_owned();
     let named = ok(
         &mut client,
         "rename_location",
@@ -1155,7 +1230,7 @@ async fn removes_physical_locations() {
     ok(
         &mut client,
         "move_to_location",
-        json!({ "device": PC_A, "into": closet["path"] }),
+        json!({ "device": PC_A, "into": closet["location"]["path"] }),
     )
     .await;
     let busy = client
