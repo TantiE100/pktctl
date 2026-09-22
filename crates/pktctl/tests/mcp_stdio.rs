@@ -14,7 +14,8 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 14] = [
+const TOOLS: [&str; 15] = [
+    "configure_ios",
     "configure_host",
     "add_device",
     "connect",
@@ -395,6 +396,44 @@ async fn configures_host_addressing_end_to_end() {
 }
 
 #[tokio::test]
+async fn applies_ios_configuration_blocks_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
+
+    let result = client
+        .call_tool(
+            "configure_ios",
+            json!({
+                "device": "R1",
+                "commands": ["conf t", "interface GigabitEthernet0/0", "ip address 10.0.0.1 255.255.255.0", "no shutdown"],
+                "save": true
+            }),
+        )
+        .await;
+    assert_eq!(result["structuredContent"]["completed"], true);
+    assert_eq!(result["structuredContent"]["saved"], true);
+    assert_eq!(result["structuredContent"]["applied"], 3);
+
+    let typed: Vec<String> = canvas
+        .cli_history("R1")
+        .into_iter()
+        .map(|(_, command)| command)
+        .collect();
+    assert_eq!(
+        typed,
+        [
+            "interface GigabitEthernet0/0",
+            "ip address 10.0.0.1 255.255.255.0",
+            "no shutdown",
+            "end",
+            "write memory"
+        ]
+    );
+}
+
+#[tokio::test]
 async fn device_mistakes_come_back_as_readable_tool_errors() {
     let (_canvas, _pt, mut client) = client_with_canvas().await;
     let unknown_model = client
@@ -489,12 +528,7 @@ async fn tool_failures_come_back_as_tool_errors_the_agent_can_read() {
         )
         .await;
     assert_eq!(result["isError"], true);
-    assert!(
-        result["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("Device")
-    );
+    assert_eq!(result["content"][0]["text"], "device `R9` not found");
 }
 
 #[tokio::test]

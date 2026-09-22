@@ -18,6 +18,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `list_ports`, `list_links`, `connect`, `disconnect` | Inspect ports and cable devices together, with CCNA cable selection. |
 | `list_models` | Device and module models available in this Packet Tracer. |
 | `run_cli` | Runs one IOS command on a router or switch and returns the console output. |
+| `configure_ios` | Applies a block of IOS configuration, stops at the first rejected command, optionally saves. |
 | `configure_host` | Static IP, mask, gateway and DNS, or DHCP, on PCs and servers, with CCNA sanity checks. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
 

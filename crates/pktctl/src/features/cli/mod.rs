@@ -1,9 +1,14 @@
-use ptmp::{Call, Value};
+mod configure;
+
+use ptmp::Value;
 use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub use configure::{CommandOutcome, ConfigureIosRequest, ConfigureIosResult, configure};
+
 use crate::{
+    features::paths::device,
     packet_tracer::{CommandStatus, PacketTracer, PtError, expect_integer, expect_text},
     server::PktctlServer,
 };
@@ -30,7 +35,7 @@ pub enum CliMode {
 }
 
 impl CliMode {
-    fn as_packet_tracer(self) -> &'static str {
+    pub(crate) fn as_packet_tracer(self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Enable => "enable",
@@ -57,17 +62,29 @@ pub async fn run<P: PacketTracer>(
             "device and command are required".into(),
         ));
     }
+    enter(packet_tracer, device, command, request.mode).await
+}
 
-    let call = Call::root("network")
-        .method("getDevice", [Value::qstring(device)])
-        .method(
-            "enterCommand",
-            [
-                Value::string(command),
-                Value::string(request.mode.as_packet_tracer()),
-            ],
-        );
-    let reply = packet_tracer.call(call).await?;
+pub(crate) async fn enter<P: PacketTracer>(
+    packet_tracer: &P,
+    device_name: &str,
+    command: &str,
+    mode: CliMode,
+) -> Result<CliResult, PtError> {
+    let call = device(device_name).method(
+        "enterCommand",
+        [
+            Value::string(command),
+            Value::string(mode.as_packet_tracer()),
+        ],
+    );
+    let reply = packet_tracer.call(call).await.map_err(|error| match error {
+        PtError::NotFound(_) => PtError::NotFound(format!("device `{device_name}`")),
+        PtError::Rejected(reason) if reason.contains("enterCommand") => PtError::Rejected(format!(
+            "{reason}; `{device_name}` has no IOS console, use run_host_command for PCs and servers"
+        )),
+        other => other,
+    })?;
     let Some((status, output)) = reply.clone().into_pair() else {
         return Err(PtError::UnexpectedReply(format!(
             "enterCommand should return a status and output, got {reply:?}"
@@ -85,6 +102,29 @@ pub async fn run<P: PacketTracer>(
 
 #[tool_router(router = cli_router, vis = "pub(crate)")]
 impl<P: PacketTracer> PktctlServer<P> {
+    #[tool(
+        name = "configure_ios",
+        description = "Apply a block of IOS configuration commands to a router or switch, as if \
+                       typed after `configure terminal`: the first command enters global \
+                       configuration and the rest follow the prompt, so `interface ...` sub-modes \
+                       work. Stops at the first command IOS rejects, always leaves \
+                       configuration mode, and runs `write memory` when `save` is true.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn configure_ios_tool(
+        &self,
+        Parameters(request): Parameters<ConfigureIosRequest>,
+    ) -> Result<Json<ConfigureIosResult>, String> {
+        configure(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
     #[tool(
         name = "run_cli",
         description = "Run one IOS command on a router or switch and return its console output. \
@@ -108,6 +148,8 @@ impl<P: PacketTracer> PktctlServer<P> {
 
 #[cfg(test)]
 mod tests {
+    use ptmp::Call;
+
     use super::*;
     use crate::packet_tracer::scripted::ScriptedPacketTracer;
 
