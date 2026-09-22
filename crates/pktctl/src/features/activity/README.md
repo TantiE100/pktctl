@@ -8,7 +8,7 @@ checks, plus any file's description.
 | Tool | What it does |
 |---|---|
 | `activity_status` | Percentage complete, score, assessment items and points, instruction pages, seconds elapsed or left, whether the password is confirmed. For a `.pkt` it only reports `is_activity: false`. |
-| `activity_instructions` | One page of instructions (`page` from 1) as readable text and as HTML. |
+| `activity_instructions` | One page of instructions (`page` from 1) as readable text and as HTML. Embedded images become `[image]` in the text and `data:,image-removed` in the HTML, since one screenshot is tens of kilobytes of base64. |
 | `check_activity` | Runs the connectivity tests and returns their lines with the current status, like *Check Results*. |
 | `reset_activity` | Resets the activity to its initial network. |
 | `unlock_activity` | Gives a password-protected activity its password (for its author or instructor). |

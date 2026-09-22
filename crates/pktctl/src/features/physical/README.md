@@ -68,6 +68,9 @@ network with the [pktfile](../../../../pktfile/README.md) crate:
 3. Write the result to a new temporary file and open it with `fileOpen`.
 4. Remove the Power Distribution Devices that Packet Tracer adds on every
    open (one per rack), keeping every device that existed before.
+5. Fast forward time. Opening a file boots the network again: switch ports
+   restart spanning tree and hosts ask DHCP again, and a PC can come back as
+   0.0.0.0 (measured on 9.0.1). `fastForwardTime` settles both at once.
 
 **Your own file is never written.** Packet Tracer ends up with the temporary
 copy open, and the reply's `file` names it; there is no IPC call to point the

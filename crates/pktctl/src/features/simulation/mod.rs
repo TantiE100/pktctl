@@ -38,6 +38,8 @@ pub struct SimulationState {
     pub time: i64,
     /// Events recorded so far.
     pub events: i64,
+    /// Index of the event the simulation is at; `back` moves it without deleting events.
+    pub current_event: i64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -86,15 +88,17 @@ pub async fn set_mode<P: PacketTracer>(
 }
 
 pub async fn state<P: PacketTracer>(packet_tracer: &P) -> Result<SimulationState, PtError> {
-    let (mode, time, events) = tokio::try_join!(
+    let (mode, time, events, current) = tokio::try_join!(
         packet_tracer.call(simulation().method("isSimulationMode", [])),
         packet_tracer.call(simulation().method("getCurrentSimTime", [])),
         packet_tracer.call(simulation().method("getFrameInstanceCount", [])),
+        packet_tracer.call(simulation().method("getCurrentFrameInstanceIndex", [])),
     )?;
     Ok(SimulationState {
         simulation: expect_bool(&mode, "isSimulationMode")?,
         time: expect_integer(&time, "simulation time")?,
         events: expect_integer(&events, "event count")?,
+        current_event: expect_integer(&current, "current event")?,
     })
 }
 
@@ -284,7 +288,17 @@ mod tests {
         let added = add_pdu(&packet_tracer, &pdu("PC1", "PC2")).await.unwrap();
         assert_eq!(added.mode, "simulation");
         let stepped = step(&packet_tracer, &StepRequest::default()).await.unwrap();
-        assert_eq!(stepped.events, 2);
+        assert_eq!((stepped.events, stepped.current_event), (2, 1));
+        let back = step(
+            &packet_tracer,
+            &StepRequest {
+                action: StepAction::Back,
+                times: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!((back.events, back.current_event), (2, 0));
 
         let list = list_events(
             &packet_tracer,

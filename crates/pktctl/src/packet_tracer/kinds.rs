@@ -104,6 +104,9 @@ pub(crate) const MODULE_KINDS: &[(i64, &str)] = &[
     (35, "network_controller_network_module"),
     (36, "isadcpower_adapter_a"),
     (37, "isadcpower_adapter_b"),
+    // Missing from the 9.0.1 ModuleType enum; named after the only modules of each type.
+    (38, "plc_power_adapter"),
+    (39, "hmi_power_adapter"),
     (2000, "custom_module_type"),
 ];
 
@@ -147,6 +150,10 @@ pub fn runs_ios(kind: &str) -> bool {
 
 pub fn device_kind_names() -> impl Iterator<Item = &'static str> {
     DEVICE_KINDS.iter().map(|(_, name)| *name)
+}
+
+pub fn module_kind_names() -> impl Iterator<Item = &'static str> {
+    MODULE_KINDS.iter().map(|(_, name)| *name)
 }
 
 fn name_for(table: &[(i64, &str)], code: i64) -> String {

@@ -9,7 +9,7 @@ hardcoded and always match the installed version.
 
 | Argument | Required | Meaning |
 |---|---|---|
-| `kind` | no | Only devices of this kind: `router`, `switch`, `multi_layer_switch`, `pc`, `server`, `laptop`, `access_point`, `asa`, `cloud`, ... |
+| `kind` | no | Only devices of this kind: `router`, `switch`, `multi_layer_switch`, `pc`, `server`, `laptop`, `access_point`, `asa`, `cloud`, ... A module kind (`interface_card`, `network_module`, `pt_laptop_module`, ...) lists only those modules instead. |
 | `include_modules` | no | Also list slot modules. Default `false`. |
 
 ```json

@@ -12,6 +12,30 @@ const ENTITIES: &[(&str, &str)] = &[
     ("&amp;", "&"),
 ];
 
+const INLINE_DATA: &str = "data:";
+const REMOVED_IMAGE: &str = "data:,image-removed";
+
+/// Replaces every `data:` URI in the HTML, the embedded images of activity
+/// instructions, with a short placeholder.
+pub fn without_inline_images(html: &str) -> String {
+    let mut kept = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find(INLINE_DATA) {
+        let quote = rest[..start].chars().next_back();
+        let Some(quote @ ('"' | '\'')) = quote else {
+            kept.push_str(&rest[..start + INLINE_DATA.len()]);
+            rest = &rest[start + INLINE_DATA.len()..];
+            continue;
+        };
+        kept.push_str(&rest[..start]);
+        kept.push_str(REMOVED_IMAGE);
+        let tail = &rest[start..];
+        rest = tail.find(quote).map_or("", |end| &tail[end..]);
+    }
+    kept.push_str(rest);
+    kept
+}
+
 /// Reduces Packet Tracer's rich-text HTML to readable lines.
 pub fn html_to_text(html: &str) -> String {
     let mut text = String::new();
@@ -38,6 +62,7 @@ pub fn html_to_text(html: &str) -> String {
             None if !closing && HIDDEN.contains(&name.as_str()) && !tag.ends_with('/') => {
                 hidden = Some(name);
             }
+            None if name == "img" => text.push_str("[image]"),
             None if BREAKS.contains(&name.as_str()) => text.push('\n'),
             Some(_) | None => {}
         }
@@ -60,6 +85,17 @@ pub fn html_to_text(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drops_embedded_images_but_keeps_the_tags() {
+        let html = r#"<p>Tags:<br><img width="800px" src="data:image/png;base64,iVBORw0KGgo=" alt=""></p><img src='data:image/gif;base64,R0lG'><a href="https://x/data:y">link</a>"#;
+        let clean = without_inline_images(html);
+        assert_eq!(
+            clean,
+            r#"<p>Tags:<br><img width="800px" src="data:,image-removed" alt=""></p><img src='data:,image-removed'><a href="https://x/data:y">link</a>"#
+        );
+        assert_eq!(html_to_text(html), "Tags:\n[image]\n[image]link");
+    }
 
     #[test]
     fn keeps_the_words_and_drops_markup() {

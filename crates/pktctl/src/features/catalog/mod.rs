@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     packet_tracer::{
         PacketTracer, PtError, expect_integer, expect_text,
-        kinds::{device_kind, device_kind_names, module_kind},
+        kinds::{device_kind, device_kind_names, module_kind, module_kind_names},
     },
     server::PktctlServer,
 };
@@ -23,7 +23,8 @@ pub struct Model {
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct CatalogRequest {
-    /// Only device models of this kind, for example `router`, `switch`, `pc`, `server`.
+    /// Only models of this kind: a device kind such as `router`, `switch`, `pc`, `server`,
+    /// or a module kind such as `interface_card` or `pt_laptop_module`, which lists modules.
     #[serde(default)]
     pub kind: Option<String>,
     /// Also list the modules (HWIC, NIM, NM cards) that can be installed in slots.
@@ -96,25 +97,35 @@ pub async fn list<P: PacketTracer>(
         .as_deref()
         .map(str::trim)
         .filter(|kind| !kind.is_empty());
+    let is_device_kind = kind.is_some_and(|kind| device_kind_names().any(|name| name == kind));
+    let is_module_kind = kind.is_some_and(|kind| module_kind_names().any(|name| name == kind));
     if let Some(kind) = kind
-        && !device_kind_names().any(|name| name == kind)
+        && !is_device_kind
+        && !is_module_kind
     {
-        let known: Vec<_> = device_kind_names().collect();
+        let known: Vec<_> = device_kind_names().chain(module_kind_names()).collect();
         return Err(PtError::InvalidInput(format!(
             "unknown kind `{kind}`; use one of: {}",
             known.join(", ")
         )));
     }
 
-    let mut devices = device_models(packet_tracer).await?;
-    if let Some(kind) = kind {
-        devices.retain(|model| model.kind == kind);
-    }
-    let modules = if request.include_modules {
+    let mut devices = if is_module_kind {
+        Vec::new()
+    } else {
+        device_models(packet_tracer).await?
+    };
+    let mut modules = if request.include_modules || is_module_kind {
         module_models(packet_tracer).await?
     } else {
         Vec::new()
     };
+    if let Some(kind) = kind {
+        devices.retain(|model| model.kind == kind);
+        if is_module_kind {
+            modules.retain(|model| model.kind == kind);
+        }
+    }
     Ok(Catalog { devices, modules })
 }
 
@@ -204,7 +215,8 @@ impl<P: PacketTracer> PktctlServer<P> {
         description = "List the device models this Packet Tracer can create, straight from its \
                        hardware catalog, optionally filtered by kind (router, switch, pc, \
                        server, access_point, ...). Set include_modules to also list slot \
-                       modules such as HWIC-2T or NIM-2T.",
+                       modules such as HWIC-2T or NIM-2T, or give a module kind \
+                       (interface_card, pt_laptop_module, ...) to list only those modules.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn list_models_tool(
@@ -280,6 +292,18 @@ mod tests {
         assert_eq!(catalog.devices.len(), 1);
         assert_eq!(catalog.modules[0].kind, "interface_card");
         assert_eq!(catalog.modules[1].kind, "network_module");
+
+        let cards = list(&hardware(), &request(Some("interface_card"), false))
+            .await
+            .unwrap();
+        assert!(cards.devices.is_empty());
+        assert!(!cards.modules.is_empty());
+        assert!(
+            cards
+                .modules
+                .iter()
+                .all(|model| model.kind == "interface_card")
+        );
     }
 
     #[tokio::test]
