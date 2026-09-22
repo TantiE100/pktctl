@@ -21,6 +21,8 @@ there is no extension window to keep open and no polling bridge in between.
 | `configure_ios` | Applies a block of IOS configuration, stops at the first rejected command, optionally saves. |
 | `list_slots`, `add_module`, `remove_module` | Inspect slots and install cards such as HWIC-2T, with the power cycle handled. |
 | `configure_host` | Static IP, mask, gateway and DNS, or DHCP, on PCs and servers, with CCNA sanity checks. |
+| `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
+| `screenshot`, `add_note`, `list_notes`, `remove_note` | See the canvas and annotate it. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
 
 ## Quick start

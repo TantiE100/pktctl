@@ -12,8 +12,16 @@ pub fn device_at(index: i32) -> Call {
     network().method("getDeviceAt", [Value::Int(index)])
 }
 
-pub fn logical_workspace() -> Call {
+pub fn app_window() -> Call {
     Call::root("appWindow")
+}
+
+pub fn logical_workspace() -> Call {
+    app_window()
         .method("getActiveWorkspace", [])
         .method("getLogicalWorkspace", [])
+}
+
+pub fn system_files() -> Call {
+    Call::root("systemFileManager")
 }

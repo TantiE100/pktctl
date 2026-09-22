@@ -15,6 +15,7 @@ pub use live::LivePacketTracer;
 pub type Events = broadcast::Receiver<Event>;
 
 const MISSING_OBJECT: &str = "IPC Cache entry";
+const MISSING_PRIVILEGE: &str = "necessary privilege";
 
 pub trait PacketTracer: Send + Sync + 'static {
     fn call(&self, call: Call) -> impl Future<Output = Result<Value, PtError>> + Send;
@@ -42,6 +43,10 @@ pub enum PtError {
     Rejected(String),
     #[error("{0} not found")]
     NotFound(String),
+    #[error(
+        "{0}; register the ExApp again with every privilege listed in docs/features/pktctl-exapp.xml"
+    )]
+    MissingPrivilege(String),
     #[error("Packet Tracer sent an unexpected reply: {0}")]
     UnexpectedReply(String),
     #[error("{0}")]
@@ -59,6 +64,9 @@ impl From<ptmp::Error> for PtError {
             ptmp::Error::AuthRejected { .. } => Self::NotRegistered(error.to_string()),
             ptmp::Error::Remote { class, message } if message.starts_with(MISSING_OBJECT) => {
                 Self::NotFound(class)
+            }
+            ptmp::Error::Remote { message, .. } if message.contains(MISSING_PRIVILEGE) => {
+                Self::MissingPrivilege(message)
             }
             ptmp::Error::Remote { class, message } => Self::Rejected(format!("{class}: {message}")),
             other => Self::Transport(other.to_string()),
@@ -122,6 +130,15 @@ mod tests {
             app_id: "app".into(),
         };
         assert!(matches!(PtError::from(rejected), PtError::NotRegistered(_)));
+        let denied = ptmp::Error::Remote {
+            class: "AppWindow".into(),
+            message: r#"ExApp or Script Module does not have the necessary privilege for IPC call "fileOpen""#.into(),
+        };
+        assert!(
+            PtError::from(denied)
+                .to_string()
+                .contains("pktctl-exapp.xml")
+        );
     }
 
     #[test]

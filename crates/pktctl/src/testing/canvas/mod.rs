@@ -89,10 +89,45 @@ struct Link {
     cable: i32,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct CanvasNote {
+    pub(super) id: String,
+    pub(super) text: String,
+    pub(super) x: i32,
+    pub(super) y: i32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct Network {
+    devices: Vec<Device>,
+    links: Vec<Link>,
+    notes: Vec<CanvasNote>,
+}
+
 #[derive(Debug, Default)]
 struct State {
     devices: Vec<Device>,
     links: Vec<Link>,
+    notes: Vec<CanvasNote>,
+    next_note: u32,
+    current_file: String,
+    files: std::collections::HashMap<String, Network>,
+}
+
+impl State {
+    fn snapshot(&self) -> Network {
+        Network {
+            devices: self.devices.clone(),
+            links: self.links.clone(),
+            notes: self.notes.clone(),
+        }
+    }
+
+    fn restore(&mut self, network: Network) {
+        self.devices = network.devices;
+        self.links = network.links;
+        self.notes = network.notes;
+    }
 }
 
 impl State {
@@ -227,6 +262,7 @@ impl Canvas {
             "hardwareFactory" => catalog::handle(&steps[1..]),
             "network" => network::handle(&mut state, &steps[1..]),
             "appWindow" => workspace::handle(&mut state, &steps[1..]),
+            "systemFileManager" => workspace::files(&state, &steps[1..]),
             other => Err(Remote::unknown_method("IPC", other)),
         }
     }
