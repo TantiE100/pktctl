@@ -1,24 +1,13 @@
-use std::time::Duration;
-
-use ptmp::{Call, Event, Subscription, Value};
+use ptmp::{Call, Value};
 use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use tokio::{sync::broadcast::error::RecvError, time::Instant};
+use serde::Deserialize;
 
 use crate::{
-    packet_tracer::{CommandStatus, Events, PacketTracer, PtError, expect_integer, expect_text},
+    features::terminal::{self, Terminal, TerminalRun},
+    packet_tracer::{PacketTracer, PtError},
     server::PktctlServer,
 };
-
-const TERMINAL: &str = "TerminalLine";
-const OUTPUT_WRITTEN: &str = "outputWritten";
-const COMMAND_ENDED: &str = "commandEnded";
-const MORE_DISPLAYED: &str = "moreDisplayed";
-const SPACE: i8 = 32;
-const NO_SPECIAL_CHAR: i32 = 0;
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
-const MAX_TIMEOUT_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct HostCommandRequest {
@@ -31,18 +20,10 @@ pub struct HostCommandRequest {
     pub timeout_secs: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-pub struct HostCommandResult {
-    pub finished: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<CommandStatus>,
-    pub output: String,
-}
-
 pub async fn run<P: PacketTracer>(
     packet_tracer: &P,
     request: &HostCommandRequest,
-) -> Result<HostCommandResult, PtError> {
+) -> Result<TerminalRun, PtError> {
     let device = request.device.trim();
     let command = request.command.trim();
     if device.is_empty() || command.is_empty() {
@@ -50,136 +31,15 @@ pub async fn run<P: PacketTracer>(
             "device and command are required".into(),
         ));
     }
-    let timeout_secs = request.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
-    if timeout_secs == 0 || timeout_secs > MAX_TIMEOUT_SECS {
-        return Err(PtError::InvalidInput(format!(
-            "timeout_secs must be between 1 and {MAX_TIMEOUT_SECS}"
-        )));
-    }
+    let timeout = terminal::timeout(request.timeout_secs)?;
 
     let prompt = Call::root("network")
         .method("getDevice", [Value::qstring(device)])
         .method("getCommandPrompt", []);
-    let terminal = packet_tracer
-        .call(prompt.clone().method("getObjectUuid", []))
+    let terminal = Terminal::open(packet_tracer, prompt)
         .await
         .map_err(explain_non_hosts)?;
-    let terminal = expect_text(&terminal, "terminal id")?;
-
-    let subscriptions = [OUTPUT_WRITTEN, COMMAND_ENDED, MORE_DISPLAYED]
-        .map(|event| Subscription::to(TERMINAL, &terminal, event));
-    let mut events = packet_tracer.subscribe(subscriptions[0].clone()).await?;
-    for subscription in &subscriptions[1..] {
-        packet_tracer.subscribe(subscription.clone()).await?;
-    }
-
-    let entered = packet_tracer
-        .call(
-            prompt
-                .clone()
-                .method("enterCommand", [Value::string(command)]),
-        )
-        .await;
-    let outcome = match entered {
-        Ok(_) => {
-            let console = Console {
-                packet_tracer,
-                prompt: &prompt,
-                terminal: &terminal,
-            };
-            console
-                .collect(&mut events, Duration::from_secs(timeout_secs))
-                .await
-        }
-        Err(error) => Err(error),
-    };
-
-    for subscription in subscriptions {
-        if let Err(error) = packet_tracer.unsubscribe(subscription).await {
-            tracing::debug!(%error, "could not unsubscribe from terminal events");
-        }
-    }
-    outcome
-}
-
-struct Console<'a, P> {
-    packet_tracer: &'a P,
-    prompt: &'a Call,
-    terminal: &'a str,
-}
-
-impl<P: PacketTracer> Console<'_, P> {
-    async fn collect(
-        &self,
-        events: &mut Events,
-        timeout: Duration,
-    ) -> Result<HostCommandResult, PtError> {
-        let deadline = Instant::now() + timeout;
-        let mut output = String::new();
-        loop {
-            let event = match tokio::time::timeout_at(deadline, events.recv()).await {
-                Err(_) => {
-                    return Ok(HostCommandResult {
-                        finished: false,
-                        status: None,
-                        output,
-                    });
-                }
-                Ok(Err(RecvError::Lagged(missed))) => {
-                    tracing::warn!(missed, "terminal output events were dropped");
-                    continue;
-                }
-                Ok(Err(RecvError::Closed)) => {
-                    return Err(PtError::Unreachable(
-                        "connection closed while the command ran".into(),
-                    ));
-                }
-                Ok(Ok(event)) => event,
-            };
-            if event.class != TERMINAL || event.object_uuid != self.terminal {
-                continue;
-            }
-            match event.name.as_str() {
-                OUTPUT_WRITTEN => output.push_str(first_text(&event)?),
-                MORE_DISPLAYED => self.next_page().await?,
-                COMMAND_ENDED => {
-                    return Ok(HostCommandResult {
-                        finished: true,
-                        status: Some(ended_status(&event)?),
-                        output,
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
-
-    async fn next_page(&self) -> Result<(), PtError> {
-        self.packet_tracer
-            .call(self.prompt.clone().method(
-                "enterChar",
-                [Value::Byte(SPACE), Value::Int(NO_SPECIAL_CHAR)],
-            ))
-            .await
-            .map(drop)
-    }
-}
-
-fn first_text(event: &Event) -> Result<&str, PtError> {
-    event
-        .args
-        .first()
-        .and_then(Value::as_str)
-        .ok_or_else(|| PtError::UnexpectedReply(format!("{} without text: {event:?}", event.name)))
-}
-
-fn ended_status(event: &Event) -> Result<CommandStatus, PtError> {
-    let code = event.args.get(1).ok_or_else(|| {
-        PtError::UnexpectedReply(format!("commandEnded without status: {event:?}"))
-    })?;
-    let code = expect_integer(code, "command status")?;
-    CommandStatus::from_code(code)
-        .ok_or_else(|| PtError::UnexpectedReply(format!("unknown command status {code}")))
+    terminal.run(command, timeout).await
 }
 
 fn explain_non_hosts(error: PtError) -> PtError {
@@ -206,7 +66,7 @@ impl<P: PacketTracer> PktctlServer<P> {
     async fn run_host_command_tool(
         &self,
         Parameters(request): Parameters<HostCommandRequest>,
-    ) -> Result<Json<HostCommandResult>, String> {
+    ) -> Result<Json<TerminalRun>, String> {
         run(self.packet_tracer(), &request)
             .await
             .map(Json)
@@ -216,33 +76,25 @@ impl<P: PacketTracer> PktctlServer<P> {
 
 #[cfg(test)]
 mod tests {
+    use ptmp::Event;
+
     use super::*;
-    use crate::packet_tracer::scripted::{Emitter, ScriptedPacketTracer, methods};
+    use crate::{
+        features::terminal::events,
+        packet_tracer::{
+            CommandStatus,
+            scripted::{Emitter, ScriptedPacketTracer, methods},
+        },
+    };
 
     const TERMINAL_ID: &str = "{terminal-pc1}";
 
-    fn terminal_event(name: &str, args: Vec<Value>) -> Event {
-        Event {
-            token: "1".into(),
-            class: TERMINAL.into(),
-            object_uuid: TERMINAL_ID.into(),
-            name: name.into(),
-            args,
-        }
-    }
-
     fn written(text: &str) -> Event {
-        terminal_event(
-            OUTPUT_WRITTEN,
-            vec![Value::string(text), Value::Bool(false), Value::Int(0)],
-        )
+        events::written(TERMINAL_ID, text)
     }
 
     fn ended(status: i32) -> Event {
-        terminal_event(
-            COMMAND_ENDED,
-            vec![Value::string("ping 10.0.0.2"), Value::Int(status)],
-        )
+        events::ended(TERMINAL_ID, "ping 10.0.0.2", status)
     }
 
     fn pc(on_command: impl Fn(&Emitter) + Send + Sync + 'static) -> ScriptedPacketTracer {
@@ -263,7 +115,7 @@ mod tests {
                 [.., "getObjectUuid"] => Ok(Value::Uuid(TERMINAL_ID.into())),
                 [.., "enterCommand"] => {
                     emitter.emit(written("page one\n"));
-                    emitter.emit(terminal_event(MORE_DISPLAYED, vec![Value::Int(0)]));
+                    emitter.emit(events::more(TERMINAL_ID));
                     Ok(Value::Void)
                 }
                 [.., "enterChar"] => {
@@ -299,7 +151,7 @@ mod tests {
         let result = run(&packet_tracer, &request(None)).await.unwrap();
         assert_eq!(
             result,
-            HostCommandResult {
+            TerminalRun {
                 finished: true,
                 status: Some(CommandStatus::Ok),
                 output: "Reply from 10.0.0.2: bytes=32 time<1ms TTL=128\nPackets: Sent = 1, Received = 1, Lost = 0 (0% loss)\n".into(),
@@ -324,6 +176,19 @@ mod tests {
                 .all(|subscription| !subscription.enabled)
         );
         assert_eq!(subscriptions[0].object_uuid, TERMINAL_ID);
+    }
+
+    #[tokio::test]
+    async fn leaves_out_the_echo_of_the_typed_command() {
+        let packet_tracer = pc(|emitter| {
+            emitter.emit(written("ping 10.0.0.2\n"));
+            emitter.emit(written("Reply from 10.0.0.2\n"));
+            emitter.emit(ended(0));
+        });
+        assert_eq!(
+            run(&packet_tracer, &request(None)).await.unwrap().output,
+            "Reply from 10.0.0.2\n"
+        );
     }
 
     #[tokio::test]

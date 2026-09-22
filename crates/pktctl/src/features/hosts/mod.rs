@@ -7,19 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     features::{devices::describe, paths::device},
-    packet_tracer::{PacketTracer, PtError, expect_bool},
+    packet_tracer::{PacketTracer, PtError, expect_bool, kinds::runs_ios},
     server::PktctlServer,
 };
 
 const DEFAULT_PORT: &str = "FastEthernet0";
-const IOS_KINDS: &[&str] = &[
-    "router",
-    "switch",
-    "multi_layer_switch",
-    "switch3650",
-    "asa",
-    "security_appliance",
-];
 const LEASE_POLLS: u32 = 10;
 const LEASE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -88,7 +80,7 @@ pub async fn configure<P: PacketTracer>(
         .filter(|port| !port.is_empty())
         .unwrap_or(DEFAULT_PORT);
     let target = describe(packet_tracer, device_name).await?;
-    if IOS_KINDS.contains(&target.kind.as_str()) {
+    if runs_ios(&target.kind) {
         return Err(PtError::InvalidInput(format!(
             "`{device_name}` is a {}; configure_host only handles end devices such as PCs and \
              servers, use configure_ios for its interfaces",

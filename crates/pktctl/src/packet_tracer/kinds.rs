@@ -56,6 +56,15 @@ pub(crate) const DEVICE_KINDS: &[(i64, &str)] = &[
     (55, "data_historian"),
 ];
 
+const IOS_KINDS: &[&str] = &[
+    "router",
+    "switch",
+    "multi_layer_switch",
+    "switch3650",
+    "asa",
+    "security_appliance",
+];
+
 pub(crate) const MODULE_KINDS: &[(i64, &str)] = &[
     (0, "line_card"),
     (1, "network_module"),
@@ -130,6 +139,10 @@ pub fn device_kind(code: i64) -> String {
 
 pub fn module_kind(code: i64) -> String {
     name_for(MODULE_KINDS, code)
+}
+
+pub fn runs_ios(kind: &str) -> bool {
+    IOS_KINDS.contains(&kind)
 }
 
 pub fn device_kind_names() -> impl Iterator<Item = &'static str> {

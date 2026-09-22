@@ -11,19 +11,32 @@ IOS on routers and switches: single commands and whole configuration blocks.
 | `device` | yes | Device name as returned by `list_devices`. |
 | `command` | yes | One IOS command. |
 | `mode` | no | `user`, `enable` (default), `global` or `current`. |
+| `timeout_secs` | no | Seconds to wait for the command to end. Default 30, maximum 300. |
 
 ```json
-{ "device": "R1", "command": "show ip interface brief" }
+{ "device": "R1", "command": "ping 192.168.10.11" }
 ```
 
 ```json
-{ "status": "ok", "output": "Interface              IP-Address      OK? Method Status ..." }
+{
+  "finished": true,
+  "status": "ok",
+  "output": "Type escape sequence to abort.\nSending 5, 100-byte ICMP Echos to 192.168.10.11, timeout is 2 seconds:\n!!!!!\nSuccess rate is 100 percent (5/5), round-trip min/avg/max = 0/0/0 ms\n"
+}
 ```
 
 `status` is IOS's verdict on the command: `ok`, `ambiguous`, `invalid`,
 `incomplete` or `not_implemented`. A rejected command is still a successful
-tool call; the agent reads `status` to correct itself. Long output such as
-`show running-config` comes back whole, without `--More--` pages.
+tool call; the agent reads `status` to correct itself. `finished: false` means
+the command was still running when `timeout_secs` elapsed.
+
+The command is typed at the device's real console, the one in the CLI tab, so
+commands that print over time (`ping`, `traceroute`) come back complete, long
+output such as `show running-config` comes back whole without `--More--`
+pages, and the user sees everything the agent typed. Before typing, the tool
+moves the console to `mode`: `enable`, `disable`, `end` and
+`configure terminal` as needed. If `enable` asks for a password the tool stops
+and says so rather than guessing one.
 
 ### `configure_ios`
 
@@ -74,10 +87,28 @@ tool call; the agent reads `status` to correct itself. Long output such as
 
 ## IPC calls
 
+`run_cli` drives the console line, `network().getDevice(device: QString).getCommandLine()`,
+through the shared [terminal](../terminal.rs) helper, which also serves
+`run_host_command`:
+
+| Call | Reply |
+|---|---|
+| `...getCommandLine().getMode()` | string: `user`, `enable`, `global`, `intG`, ... |
+| `...getCommandLine().getObjectUuid()` | uuid used to subscribe to its events |
+| `...getCommandLine().enterCommand(command: string)` | void; output arrives as `TerminalLine` events |
+
+The console echoes every typed character as `outputWritten`; the echo of the
+command is removed from `output`. `commandEnded` carries the status. The prompt
+printed after it is left out.
+
+`configure_ios` uses a different call:
+
 | Call | Reply |
 |---|---|
 | `network().getDevice(device: QString).enterCommand(command: string, mode: string)` | pair(int status, string output) |
 
 `mode` is `user`, `enable`, `global`, or empty for the current mode. This call
-bypasses the console line, so it works even while the console is still showing
-the initial configuration dialog.
+answers synchronously with each command's status, which is what a
+configuration block needs. It does not wait for output that arrives later, so
+`ping` sent this way returns an empty line; that is why `run_cli` uses the
+console instead.

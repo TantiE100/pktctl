@@ -18,7 +18,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `add_device`, `rename_device`, `move_device`, `remove_device` | Build and reshape the topology. |
 | `list_ports`, `list_links`, `connect`, `disconnect` | Inspect ports and cable devices together, with CCNA cable selection. |
 | `list_models` | Device and module models available in this Packet Tracer. |
-| `run_cli` | Runs one IOS command on a router or switch and returns the console output. |
+| `run_cli` | Types one IOS command at a router or switch console and returns its complete output, `ping` and `traceroute` included. |
 | `configure_ios` | Applies a block of IOS configuration, stops at the first rejected command, optionally saves. |
 | `list_slots`, `add_module`, `remove_module` | Inspect slots and install cards such as HWIC-2T, with the power cycle handled. |
 | `configure_host` | Static IP, mask, gateway and DNS, or DHCP, on PCs and servers, with CCNA sanity checks. |

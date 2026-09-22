@@ -8,4 +8,5 @@ pub mod modules;
 pub mod paths;
 pub mod setup;
 pub mod status;
+pub(crate) mod terminal;
 pub mod workspace;
