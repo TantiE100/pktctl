@@ -14,6 +14,7 @@ there is no extension window to keep open and no polling bridge in between.
 |---|---|
 | `status` | Is Packet Tracer reachable? Version, device and link counts, or what to fix. |
 | `list_devices` | Every device with its name, model and kind. |
+| `list_models` | Device and module models available in this Packet Tracer. |
 | `run_cli` | Runs one IOS command on a router or switch and returns the console output. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
 

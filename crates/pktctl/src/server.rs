@@ -26,7 +26,8 @@ impl<P: PacketTracer> PktctlServer<P> {
             tool_router: Self::status_router()
                 + Self::devices_router()
                 + Self::cli_router()
-                + Self::host_console_router(),
+                + Self::host_console_router()
+                + Self::catalog_router(),
         }
     }
 

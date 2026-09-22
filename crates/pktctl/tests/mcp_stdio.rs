@@ -114,7 +114,22 @@ fn two_device_network(call: &Call) -> Reply {
         .map(|step| step.method.as_str())
         .collect();
     let value = match methods.as_slice() {
-        ["network", "getDeviceCount"] => Value::Int(2),
+        [
+            "hardwareFactory",
+            "devices",
+            "getAvailableDeviceAt",
+            attribute,
+        ] => {
+            let router = call.steps()[2].args[0] == Value::Int(0);
+            match (*attribute, router) {
+                ("getModel", true) => Value::qstring("2911"),
+                ("getModel", false) => Value::qstring("PC-PT"),
+                (_, true) => Value::Int(0),
+                _ => Value::Int(8),
+            }
+        }
+        ["network", "getDeviceCount"]
+        | ["hardwareFactory", "devices", "getAvailableDeviceCount"] => Value::Int(2),
         ["network", "getLinkCount"] => Value::Int(1),
         ["network", "getDeviceAt", attribute] => {
             let router = call.steps()[1].args[0] == Value::Int(0);
@@ -195,7 +210,13 @@ async fn advertises_every_feature_tool_with_schemas() {
     names.sort_unstable();
     assert_eq!(
         names,
-        ["list_devices", "run_cli", "run_host_command", "status"]
+        [
+            "list_devices",
+            "list_models",
+            "run_cli",
+            "run_host_command",
+            "status"
+        ]
     );
 
     let run_cli = tools["tools"]
@@ -230,6 +251,18 @@ async fn list_devices_describes_the_network() {
             { "name": "R1", "model": "2911", "kind": "Router" },
             { "name": "PC1", "model": "PC-PT", "kind": "Pc" }
         ])
+    );
+}
+
+#[tokio::test]
+async fn list_models_reads_the_hardware_catalog() {
+    let (_pt, mut client) = client_with_network().await;
+    let result = client
+        .call_tool("list_models", json!({ "kind": "pc" }))
+        .await;
+    assert_eq!(
+        result["structuredContent"],
+        json!({ "devices": [{ "model": "PC-PT", "kind": "pc" }] })
     );
 }
 
