@@ -211,6 +211,10 @@ mod tests {
         let packet_tracer = ScriptedPacketTracer::new(|call| match methods(call).as_slice() {
             ["network", "getDevice", "getClassName"] => Ok(Value::qstring("Router")),
             ["network", "getDevice", "getUserPassCount"] => Ok(Value::Int(2)),
+            ["network", "getDevice", "getProcess", "getClassName"] => {
+                Ok(Value::string("ArpProcess"))
+            }
+            ["network", "getDevice", "getProcess", "getArpTable"] => Ok(Value::Int(0)),
             other => panic!("unexpected call {other:?}"),
         });
         let result = call_ipc(
@@ -226,6 +230,23 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.value, json!(2));
+
+        let arp = call_ipc(
+            &packet_tracer,
+            &request(
+                "network",
+                vec![
+                    step("getDevice", json!(["PC1"])),
+                    step("getProcess", json!(["ArpProcess"])),
+                    step("getArpTable", json!([])),
+                ],
+            ),
+        )
+        .await;
+        assert!(
+            arp.is_ok(),
+            "wire class names differ in case from the Java ones: {arp:?}"
+        );
     }
 
     #[tokio::test]
@@ -260,6 +281,43 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(name.value, json!("R1"));
+    }
+
+    #[tokio::test]
+    async fn value_objects_come_back_with_field_names() {
+        let packet_tracer = ScriptedPacketTracer::new(|_| {
+            Ok(Value::Data {
+                class: "FlowChartNode".into(),
+                fields: vec![
+                    Value::string("CPingProcess_next_ping"),
+                    Value::qstring("The Ping process starts the next ping request."),
+                    Value::Bool(false),
+                    Value::Int(3),
+                ],
+            })
+        });
+        let node = call_ipc(
+            &packet_tracer,
+            &request(
+                "simulation",
+                vec![
+                    step("getFrameInstanceAt", json!([0])),
+                    step("getFlowChartNodeAt", json!([0])),
+                ],
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            node.value,
+            json!({
+                "class": "FlowChartNode",
+                "strID": "CPingProcess_next_ping",
+                "description": "The Ping process starts the next ping request.",
+                "isOSIIn": false,
+                "OSILayerNumber": 3
+            })
+        );
     }
 
     #[tokio::test]

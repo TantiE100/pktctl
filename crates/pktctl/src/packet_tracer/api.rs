@@ -15,6 +15,22 @@ pub struct ApiIndex {
     pub classes: BTreeMap<String, ClassDef>,
     pub enums: BTreeMap<String, BTreeMap<String, i64>>,
     pub roots: BTreeMap<String, String>,
+    #[serde(default)]
+    pub data: BTreeMap<String, DataLayout>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DataLayout {
+    pub interface: String,
+    pub fields: Vec<DataField>,
+    #[serde(default)]
+    pub variable: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DataField {
+    pub name: String,
+    pub kind: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,6 +178,31 @@ impl ApiIndex {
         })
     }
 
+    pub fn register_data_layouts() {
+        let api = Self::get();
+        ptmp::data::register(
+            api.data
+                .iter()
+                .filter(|(_, layout)| !layout.variable)
+                .map(|(class, layout)| (class.clone(), layout.fields.len())),
+        );
+    }
+
+    pub fn class_named(&self, wire_name: &str) -> Option<&str> {
+        self.classes
+            .get_key_value(wire_name)
+            .or_else(|| {
+                self.classes
+                    .iter()
+                    .find(|(candidate, _)| candidate.eq_ignore_ascii_case(wire_name))
+            })
+            .map(|(name, _)| name.as_str())
+    }
+
+    pub fn is_remote(&self, name: &str) -> bool {
+        self.classes.get(name).is_some_and(|class| class.remote)
+    }
+
     pub fn class(&self, name: &str) -> Option<&ClassDef> {
         self.classes.get(name)
     }
@@ -269,6 +310,18 @@ mod tests {
         assert!(api.ancestors("Router").contains(&"Device"));
         assert!(api.descendants("Device").contains(&"Router"));
         assert!(!api.methods_named("Router", "setName").is_empty());
+    }
+
+    #[test]
+    fn knows_value_object_layouts() {
+        let node = &ApiIndex::get().data["FlowChartNode"];
+        let names: Vec<&str> = node
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert_eq!(names, ["strID", "description", "isOSIIn", "OSILayerNumber"]);
+        assert!(!node.variable);
     }
 
     #[test]

@@ -68,6 +68,14 @@ With no argument it returns the roots and totals: 346 classes, 3111 methods and
   uuid through `getObjectByUuid`.
 - **Enums** come back as `{ "name", "value" }`. Byte lists come back as
   `{ "bytes", "base64" }`.
+- **Value objects** (PTMP type 16: ACL statements, ARP tables, routing
+  entries, flowchart nodes, packet headers, 359 classes) come back as JSON
+  objects with their field names, for example
+  `{ "class": "FlowChartNode", "strID": "...", "description": "...", "isOSIIn": false, "OSILayerNumber": 3 }`.
+  The layouts come from each class's `read` method in the framework and are
+  registered with `ptmp` at startup, so a value object inside a pair or a
+  vector is read exactly. The 16 classes whose `read` loops are read field by
+  field until the next token is not a type code.
 
 Methods that only exist inside the Java client (`getFactory`,
 `getAccessMessage`, `getPacketTracerSession`) are left out.

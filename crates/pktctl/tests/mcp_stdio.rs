@@ -13,7 +13,11 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 34] = [
+const TOOLS: [&str; 38] = [
+    "add_pdu",
+    "list_simulation_events",
+    "simulation_mode",
+    "simulation_step",
     "add_building",
     "rename_location",
     "add_location",
@@ -550,6 +554,32 @@ async fn places_devices_in_the_physical_workspace_end_to_end() {
         json!({ "moved": "S1", "now_in": "Home City/Corporate Office/Wiring Closet/Rack" })
     );
     assert_eq!(canvas.physical_parent("S1").as_deref(), Some("Rack"));
+}
+
+#[tokio::test]
+async fn simulates_a_ping_end_to_end() {
+    let (_canvas, _pt, mut client) = client_with_canvas().await;
+    for name in ["PC1", "PC2"] {
+        client
+            .call_tool("add_device", json!({ "model": "PC-PT", "name": name }))
+            .await;
+    }
+    client
+        .call_tool("simulation_mode", json!({ "on": true }))
+        .await;
+    client
+        .call_tool("add_pdu", json!({ "source": "PC1", "destination": "PC2" }))
+        .await;
+    let stepped = client.call_tool("simulation_step", json!({})).await;
+    assert_eq!(stepped["structuredContent"]["events"], 2);
+    let events = client
+        .call_tool("list_simulation_events", json!({ "protocols": ["ICMP"] }))
+        .await;
+    assert_eq!(events["structuredContent"]["events"][1]["device"], "PC2");
+    assert_eq!(
+        events["structuredContent"]["events"][1]["status"],
+        json!(["accepted"])
+    );
 }
 
 #[tokio::test]

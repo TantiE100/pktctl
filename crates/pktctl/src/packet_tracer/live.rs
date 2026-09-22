@@ -11,6 +11,7 @@ pub struct LivePacketTracer {
 
 impl LivePacketTracer {
     pub fn new(config: SessionConfig) -> Self {
+        super::api::ApiIndex::register_data_layouts();
         Self {
             config,
             session: Mutex::new(None),

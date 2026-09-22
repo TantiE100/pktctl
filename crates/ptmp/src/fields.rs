@@ -49,6 +49,11 @@ impl<'a> Fields<'a> {
         Ok(bytes)
     }
 
+    pub(crate) fn peek(&self) -> Option<&'a str> {
+        let end = self.rest.iter().position(|&byte| byte == 0)?;
+        std::str::from_utf8(&self.rest[..end]).ok()
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.rest.is_empty()
     }

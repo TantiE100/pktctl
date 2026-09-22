@@ -2,6 +2,7 @@
 
 mod auth;
 mod call;
+pub mod data;
 mod error;
 mod event;
 mod fields;

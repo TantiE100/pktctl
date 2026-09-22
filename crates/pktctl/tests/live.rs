@@ -31,6 +31,7 @@ async fn ok(client: &mut McpClient, tool: &str, arguments: Json) -> Json {
 }
 
 async fn remove_leftovers(client: &mut McpClient) {
+    ok(client, "simulation_mode", json!({ "on": false })).await;
     let devices = ok(client, "list_devices", json!({})).await;
     for device in devices["devices"].as_array().unwrap() {
         let name = device["name"].as_str().unwrap();
@@ -407,4 +408,77 @@ async fn places_devices_in_the_physical_workspace() {
     ok(&mut client, "show_workspace", json!({ "view": "logical" })).await;
     ok(&mut client, "open_network", json!({ "path": saved })).await;
     std::fs::remove_file(saved).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn follows_a_ping_in_simulation_mode() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2960-24TT", "name": SWITCH }),
+    )
+    .await;
+    for (pc, port, ip) in [
+        (PC_A, "FastEthernet0/1", "10.77.0.1"),
+        (PC_B, "FastEthernet0/2", "10.77.0.2"),
+    ] {
+        ok(
+            &mut client,
+            "add_device",
+            json!({ "model": "PC-PT", "name": pc }),
+        )
+        .await;
+        ok(
+            &mut client,
+            "connect",
+            json!({ "device_a": SWITCH, "port_a": port, "device_b": pc, "port_b": "FastEthernet0" }),
+        )
+        .await;
+        ok(
+            &mut client,
+            "configure_host",
+            json!({ "device": pc, "ip": ip, "mask": "255.255.255.0" }),
+        )
+        .await;
+    }
+    ping(&mut client, PC_A, "10.77.0.2").await;
+    ok(&mut client, "simulation_mode", json!({ "on": true })).await;
+    ok(&mut client, "simulation_step", json!({ "action": "reset" })).await;
+    ok(
+        &mut client,
+        "add_pdu",
+        json!({ "source": PC_A, "destination": PC_B }),
+    )
+    .await;
+    let mut reply = Json::Null;
+    for _ in 0..30 {
+        ok(&mut client, "simulation_step", json!({})).await;
+        let events = ok(
+            &mut client,
+            "list_simulation_events",
+            json!({ "protocols": ["ICMP"], "device": PC_A, "include_decisions": true }),
+        )
+        .await;
+        reply = events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event["from"] == SWITCH)
+            .cloned()
+            .unwrap_or(Json::Null);
+        if !reply.is_null() {
+            break;
+        }
+    }
+    assert!(!reply.is_null(), "the echo reply never came back to {PC_A}");
+    assert!(
+        reply["decisions"]
+            .as_array()
+            .is_some_and(|decisions| !decisions.is_empty())
+    );
+    ok(&mut client, "simulation_mode", json!({ "on": false })).await;
+    remove_leftovers(&mut client).await;
 }

@@ -21,10 +21,11 @@ pub enum TypeCode {
     Uuid = 13,
     Pair = 14,
     Vector = 15,
+    Data = 16,
 }
 
 impl TypeCode {
-    const ALL: [Self; 16] = [
+    const ALL: [Self; 17] = [
         Self::Void,
         Self::Byte,
         Self::Bool,
@@ -41,6 +42,7 @@ impl TypeCode {
         Self::Uuid,
         Self::Pair,
         Self::Vector,
+        Self::Data,
     ];
 
     pub fn code(self) -> u8 {
@@ -81,6 +83,11 @@ pub enum Value {
         items: Vec<Value>,
     },
     Bytes(Vec<u8>),
+    /// A value object such as an ACL statement or a flowchart node: its class and its fields.
+    Data {
+        class: String,
+        fields: Vec<Value>,
+    },
 }
 
 impl Value {
@@ -110,6 +117,7 @@ impl Value {
             Self::Uuid(_) => TypeCode::Uuid,
             Self::Pair(..) => TypeCode::Pair,
             Self::Vector { .. } | Self::Bytes(_) => TypeCode::Vector,
+            Self::Data { .. } => TypeCode::Data,
         }
     }
 
@@ -203,13 +211,23 @@ impl Value {
                 out.text(&bytes.len().to_string());
                 out.raw(bytes);
             }
+            Self::Data { class, fields } => {
+                out.text(class);
+                for field in fields {
+                    field.encode_result(out);
+                }
+            }
             scalar => out.text(&scalar.scalar_text().unwrap_or_default()),
         }
     }
 
     fn scalar_text(&self) -> Option<String> {
         Some(match self {
-            Self::Void | Self::Pair(..) | Self::Vector { .. } | Self::Bytes(_) => return None,
+            Self::Void
+            | Self::Pair(..)
+            | Self::Vector { .. }
+            | Self::Bytes(_)
+            | Self::Data { .. } => return None,
             Self::Byte(number) => number.to_string(),
             Self::Bool(flag) => flag.to_string(),
             Self::Short(number) => number.to_string(),
@@ -264,6 +282,29 @@ impl Value {
                     .collect::<Result<_, _>>()?;
                 Self::Vector { element, items }
             }
+            TypeCode::Data => {
+                let class = fields.next_owned("data class")?;
+                let mut values = Vec::new();
+                match crate::data::field_count(&class) {
+                    Some(count) => {
+                        for _ in 0..count {
+                            values.push(Self::decode(fields)?);
+                        }
+                    }
+                    None => {
+                        while fields
+                            .peek()
+                            .is_some_and(|token| TypeCode::parse(token).is_ok())
+                        {
+                            values.push(Self::decode(fields)?);
+                        }
+                    }
+                }
+                Self::Data {
+                    class,
+                    fields: values,
+                }
+            }
         })
     }
 }
@@ -288,6 +329,41 @@ mod tests {
         let mut out = FrameBuilder::default();
         value.encode_result(&mut out);
         out.build().unwrap().body().to_vec()
+    }
+
+    #[test]
+    fn decodes_data_objects_by_layout_or_by_type_codes() {
+        let node = [
+            "16",
+            "FlowChartNodeTest",
+            "8",
+            "CPingProcess_next_ping",
+            "9",
+            "The Ping process starts.",
+            "2",
+            "false",
+            "4",
+            "3",
+        ];
+        let greedy = decode(&node).unwrap();
+        let Value::Data { class, fields } = greedy else {
+            panic!("expected data");
+        };
+        assert_eq!(class, "FlowChartNodeTest");
+        assert_eq!(fields.len(), 4);
+        assert_eq!(fields[3], Value::Int(3));
+
+        crate::data::register([("PairedDataTest".to_owned(), 1)]);
+        let paired = decode(&["14", "16", "PairedDataTest", "8", "x", "4", "7"]).unwrap();
+        let (first, second) = paired.into_pair().unwrap();
+        assert_eq!(
+            first,
+            Value::Data {
+                class: "PairedDataTest".into(),
+                fields: vec![Value::string("x")]
+            }
+        );
+        assert_eq!(second, Value::Int(7));
     }
 
     #[test]

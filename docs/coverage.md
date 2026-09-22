@@ -2,7 +2,8 @@
 
 Which parts of Packet Tracer pktctl reaches, and how each was validated.
 
-Every remote method of the official IPC API (346 classes, 3111 methods,
+Value objects (ACL statements, ARP tables, flowchart nodes and 356 more
+classes) come back with their field names. Every remote method of the official IPC API (346 classes, 3111 methods,
 133 enums in Packet Tracer 9.0.1) is callable through `call_ipc`, with argument
 types checked against the framework before anything is sent. The table below
 tracks which areas also have **dedicated tools**: friendlier arguments, CCNA
@@ -30,7 +31,8 @@ Validation levels:
 | Any IPC method | `describe_ipc`, `call_ipc` | live |
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
 | Physical workspace: renaming locations, creating buildings (not in the IPC API) | `rename_location`, `add_building`, through `.pkt` editing | live |
-| Simulation mode, PDUs, event list | none yet | ipc |
+| Simulation mode, simple PDUs, stepping, event list with decisions | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | live |
+| Complex PDUs, scenarios, event-list GUI filters, play speed | none yet | ipc |
 | Device power | none yet | ipc |
 | Wireless (SSID, security, association) | none yet | ipc |
 | Server services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | none yet | ipc |

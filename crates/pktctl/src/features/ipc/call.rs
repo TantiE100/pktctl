@@ -66,7 +66,9 @@ pub async fn call_ipc<P: PacketTracer>(
     let Some(method) = resolved.last.clone() else {
         return object_value(packet_tracer, resolved, "object").await;
     };
-    if let Kind::Object(_) = method.returns() {
+    if let Kind::Object(name) = method.returns()
+        && api.is_remote(name)
+    {
         let returns = method.returns().label();
         return object_value(packet_tracer, resolved, &returns).await;
     }
@@ -115,7 +117,7 @@ async fn apply<P: PacketTracer>(
     step: &IpcStep,
 ) -> Result<Resolved, PtError> {
     if let Some(previous) = &current.last
-        && !matches!(previous.returns(), Kind::Object(_))
+        && !matches!(previous.returns(), Kind::Object(name) if api.is_remote(name))
     {
         return Err(PtError::InvalidInput(format!(
             "`{}` returns {}, so nothing can be called on it",
@@ -189,11 +191,9 @@ async fn dynamic_class<P: PacketTracer>(
         Err(error @ (PtError::Unreachable(_) | PtError::Transport(_))) => return Err(error),
         Err(_) => return Ok(declared.to_owned()),
     };
-    if api.class(&actual).is_some() {
-        Ok(actual)
-    } else {
-        Ok(declared.to_owned())
-    }
+    Ok(api
+        .class_named(&actual)
+        .map_or_else(|| declared.to_owned(), str::to_owned))
 }
 
 async fn object_value<P: PacketTracer>(
@@ -357,11 +357,11 @@ fn decode(api: &ApiIndex, kind: Kind<'_>, value: Value) -> Json {
                     .collect(),
             )
         }
-        (_, value) => plain(value),
+        (_, value) => plain(api, value),
     }
 }
 
-fn plain(value: Value) -> Json {
+fn plain(api: &ApiIndex, value: Value) -> Json {
     match value {
         Value::Void => Json::Null,
         Value::Bool(flag) => Json::Bool(flag),
@@ -376,8 +376,29 @@ fn plain(value: Value) -> Json {
         }
         Value::Ip(address) => Json::String(address.to_string()),
         Value::Ipv6(address) => Json::String(address.to_string()),
-        Value::Pair(first, second) => Json::Array(vec![plain(*first), plain(*second)]),
-        Value::Vector { items, .. } => Json::Array(items.into_iter().map(plain).collect()),
+        Value::Pair(first, second) => Json::Array(vec![plain(api, *first), plain(api, *second)]),
+        Value::Vector { items, .. } => {
+            Json::Array(items.into_iter().map(|item| plain(api, item)).collect())
+        }
         Value::Bytes(bytes) => json!({ "bytes": bytes.len(), "base64": STANDARD.encode(bytes) }),
+        Value::Data { class, fields } => data(api, class, fields),
     }
+}
+
+fn data(api: &ApiIndex, class: String, fields: Vec<Value>) -> Json {
+    let values: Vec<Json> = fields.into_iter().map(|field| plain(api, field)).collect();
+    let mut object = serde_json::Map::new();
+    match api.data.get(&class) {
+        Some(layout) if !layout.variable && layout.fields.len() == values.len() => {
+            object.insert("class".into(), Json::String(layout.interface.clone()));
+            for (field, value) in layout.fields.iter().zip(values) {
+                object.insert(field.name.clone(), value);
+            }
+        }
+        _ => {
+            object.insert("class".into(), Json::String(class));
+            object.insert("fields".into(), Json::Array(values));
+        }
+    }
+    Json::Object(object)
 }

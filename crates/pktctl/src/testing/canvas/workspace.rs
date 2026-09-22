@@ -5,6 +5,7 @@ use super::{
     models::MODELS,
     physical,
     remote::{Remote, check_args, number, qstring_arg},
+    simulation,
 };
 
 const WORKSPACE: &str = "LogicalWorkspace";
@@ -32,6 +33,7 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             Ok(Value::Void)
         }
         ["isPhysicalMode"] => Ok(Value::Bool(state.physical_mode)),
+        ["getUserCreatedPDU", "addSimplePdu"] => simulation::add_simple_pdu(state, &steps[1]),
         ["getActiveFile", "getSavedFilename"] => Ok(Value::qstring(&state.current_file)),
         ["fileSaveAsNoPrompt"] => {
             check_args(&steps[0], APP_WINDOW, &[TypeCode::QString, TypeCode::Bool])?;
