@@ -1,3 +1,4 @@
+mod file_edit;
 mod place;
 mod tree;
 
@@ -5,6 +6,9 @@ use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub use file_edit::{
+    AddBuildingRequest, FileEdit, RenameLocationRequest, add_building, rename_location,
+};
 pub use place::{
     AddLocationRequest, MoveRequest, Moved, NewLocation, add_location, move_to_location,
 };
@@ -115,6 +119,50 @@ impl<P: PacketTracer> PktctlServer<P> {
     }
 
     #[tool(
+        name = "rename_location",
+        description = "Rename a city, building, wiring closet or other location. Packet Tracer \
+                       has no call for this, so pktctl saves the network, edits the saved file \
+                       and reopens it; the network ends up saved (to its current file, or to a \
+                       temporary file if it was never saved).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn rename_location_tool(
+        &self,
+        Parameters(request): Parameters<RenameLocationRequest>,
+    ) -> Result<Json<FileEdit>, String> {
+        rename_location(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "add_building",
+        description = "Create a named building inside a city. Packet Tracer has no call for \
+                       this, so pktctl saves the network, adds the building to the saved file \
+                       and reopens it; the network ends up saved (to its current file, or to a \
+                       temporary file if it was never saved).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn add_building_tool(
+        &self,
+        Parameters(request): Parameters<AddBuildingRequest>,
+    ) -> Result<Json<FileEdit>, String> {
+        add_building(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
         name = "show_workspace",
         description = "Switch Packet Tracer's main window between the logical and the physical \
                        workspace, for example before a screenshot or a class demo.",
@@ -142,6 +190,7 @@ mod tests {
     use super::*;
     use crate::{
         features::devices::{AddDeviceRequest, add},
+        packet_tracer::PtError,
         packet_tracer::scripted::ScriptedPacketTracer,
         testing::Canvas,
     };
@@ -354,6 +403,101 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("shares its name"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn renames_locations_through_the_saved_file() {
+        let (_canvas, packet_tracer) = lab().await;
+        let renamed = rename_location(
+            &packet_tracer,
+            &RenameLocationRequest {
+                path: "Home City".into(),
+                name: "Cochabamba".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(renamed.location.path, "Cochabamba");
+        assert!(std::path::Path::new(&renamed.file).exists());
+        let list = list_locations(&packet_tracer).await.unwrap();
+        assert!(list.locations.iter().any(|location| location.path
+            == "Cochabamba/Corporate Office/Main Wiring Closet/Rack"
+            && location.devices == ["R1", "S1"]));
+        std::fs::remove_file(renamed.file).unwrap();
+    }
+
+    #[tokio::test]
+    async fn duplicates_can_be_renamed_apart_and_then_targeted() {
+        let (_canvas, packet_tracer) = lab().await;
+        for _ in 0..2 {
+            add_location(
+                &packet_tracer,
+                &AddLocationRequest {
+                    kind: NewLocation::City,
+                    ..AddLocationRequest::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let renamed = rename_location(
+            &packet_tracer,
+            &RenameLocationRequest {
+                path: "City#2".into(),
+                name: "El Alto".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(renamed.location.path, "El Alto");
+        let moved = move_to_location(&packet_tracer, &move_device("PC1", "El Alto"))
+            .await
+            .unwrap();
+        assert_eq!(moved.now_in, "El Alto");
+        std::fs::remove_file(renamed.file).unwrap();
+    }
+
+    #[tokio::test]
+    async fn adds_named_buildings_to_cities_only() {
+        let (_canvas, packet_tracer) = lab().await;
+        let building = add_building(
+            &packet_tracer,
+            &AddBuildingRequest {
+                inside: "Home City".into(),
+                name: "Alcaldía GAMC".into(),
+                x: Some(400),
+                y: Some(150),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(building.location.path, "Home City/Alcaldía GAMC");
+        assert_eq!(building.location.kind, "building");
+        assert_eq!((building.location.x, building.location.y), (400, 150));
+        std::fs::remove_file(&building.file).unwrap();
+
+        let refused = add_building(
+            &packet_tracer,
+            &AddBuildingRequest {
+                inside: "Home City/Corporate Office".into(),
+                name: "Anexo".into(),
+                ..AddBuildingRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.to_string().contains("inside a city"), "{refused}");
+
+        let bad_name = rename_location(
+            &packet_tracer,
+            &RenameLocationRequest {
+                path: "Home City".into(),
+                name: "a/b".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(bad_name, PtError::InvalidInput(_)));
     }
 
     #[tokio::test]

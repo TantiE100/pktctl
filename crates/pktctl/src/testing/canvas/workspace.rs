@@ -37,6 +37,13 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             check_args(&steps[0], APP_WINDOW, &[TypeCode::QString, TypeCode::Bool])?;
             let path = steps[0].args[0].as_str().unwrap_or_default().to_owned();
             let snapshot = state.snapshot();
+            if std::path::Path::new(&path)
+                .parent()
+                .is_some_and(std::path::Path::is_dir)
+            {
+                let file = pktfile::encode(&state.physical.to_xml()).expect("canvas XML encodes");
+                std::fs::write(&path, file).expect("canvas can write real files");
+            }
             state.files.insert(path.clone(), snapshot);
             state.current_file = path;
             Ok(Value::Void)
@@ -49,13 +56,20 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
         }
         ["fileOpen"] => {
             let path = qstring_arg(&steps[0], APP_WINDOW)?.to_owned();
-            match state.files.get(&path).cloned() {
-                Some(network) => {
+            let on_disk = std::fs::read(&path)
+                .ok()
+                .map(|bytes| pktfile::decode(&bytes).and_then(|xml| pktfile::physical_nodes(&xml)));
+            match (state.files.get(&path).cloned(), on_disk) {
+                (_, Some(Err(_))) => Ok(Value::Int(3)),
+                (Some(network), on_disk) => {
                     state.restore(network);
+                    if let Some(Ok(nodes)) = on_disk {
+                        state.physical = physical::Physical::from_nodes(&nodes);
+                    }
                     state.current_file = path;
                     Ok(Value::Int(0))
                 }
-                None => Ok(Value::Int(6)),
+                (None, _) => Ok(Value::Int(6)),
             }
         }
         _ => Err(Remote::unknown_method(

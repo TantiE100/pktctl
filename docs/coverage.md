@@ -29,7 +29,7 @@ Validation levels:
 | Canvas image and notes | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
 | Any IPC method | `describe_ipc`, `call_ipc` | live |
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
-| Physical workspace: renaming locations, creating buildings | none: not in the IPC API | planned through `.pkt` editing |
+| Physical workspace: renaming locations, creating buildings (not in the IPC API) | `rename_location`, `add_building`, through `.pkt` editing | live |
 | Simulation mode, PDUs, event list | none yet | ipc |
 | Device power | none yet | ipc |
 | Wireless (SSID, security, association) | none yet | ipc |

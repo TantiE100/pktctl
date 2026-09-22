@@ -376,6 +376,32 @@ async fn places_devices_in_the_physical_workspace() {
         back["now_in"],
         "Home City/Corporate Office/Main Wiring Closet/Rack"
     );
+    let renamed = ok(
+        &mut client,
+        "rename_location",
+        json!({ "path": city_path, "name": "Cochabamba" }),
+    )
+    .await;
+    assert_eq!(renamed["location"]["path"], "Cochabamba", "{renamed}");
+    let building = ok(
+        &mut client,
+        "add_building",
+        json!({ "inside": "Cochabamba", "name": "Alcaldía GAMC", "x": 400, "y": 150 }),
+    )
+    .await;
+    assert_eq!(building["location"]["path"], "Cochabamba/Alcaldía GAMC");
+    assert_eq!(building["location"]["kind"], "building");
+    let devices = ok(&mut client, "list_devices", json!({})).await;
+    let power_units = devices["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|device| device["model"] == "Power Distribution Device")
+        .count();
+    assert!(
+        power_units <= 2,
+        "reopening must not pile up power units: {devices}"
+    );
     let shown = ok(&mut client, "show_workspace", json!({ "view": "physical" })).await;
     assert_eq!(shown["physical"], true);
     ok(&mut client, "show_workspace", json!({ "view": "logical" })).await;

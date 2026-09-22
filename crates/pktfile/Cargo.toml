@@ -1,0 +1,21 @@
+[package]
+name = "pktfile"
+description = "Reads and writes Cisco Packet Tracer .pkt files: the encryption, obfuscation and compression around their XML"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cipher = "0.4"
+cmac = "0.7"
+ctr = "0.9"
+flate2 = "1"
+quick-xml = "0.38"
+thiserror = { workspace = true }
+twofish = "0.7"
+uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

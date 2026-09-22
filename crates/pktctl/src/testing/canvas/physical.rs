@@ -18,6 +18,7 @@ const OFFICE: usize = 2;
 
 #[derive(Debug, Clone)]
 pub(super) struct Place {
+    persistent: String,
     name: String,
     kind: i32,
     x: i32,
@@ -35,7 +36,11 @@ pub(super) struct Physical {
 
 impl Default for Physical {
     fn default() -> Self {
-        let place = |name: &str, kind, x, y, parent| Place {
+        let place = |name: &str, kind, x, y, parent: Option<usize>| Place {
+            persistent: persistent_id(
+                parent.map_or(0, |parent| parent + 1) * 100
+                    + usize::try_from(kind).unwrap_or_default(),
+            ),
             name: name.into(),
             kind,
             x,
@@ -65,6 +70,7 @@ impl Physical {
 
     fn add(&mut self, name: &str, kind: i32, (x, y): (i32, i32), parent: usize) -> usize {
         self.places.push(Place {
+            persistent: persistent_id(1000 + self.places.len()),
             name: name.into(),
             kind,
             x,
@@ -114,6 +120,60 @@ impl Physical {
             self.places.push(moved);
         } else {
             self.places[id].parent = Some(parent);
+        }
+    }
+
+    pub(super) fn to_xml(&self) -> String {
+        let root = (0..self.places.len())
+            .find(|id| self.places[*id].parent.is_none())
+            .unwrap_or_default();
+        format!(
+            "<PACKETTRACER5><VERSION>9.0.1.0858</VERSION><PHYSICALWORKSPACE>{}</PHYSICALWORKSPACE></PACKETTRACER5>",
+            self.node_xml(root)
+        )
+    }
+
+    fn node_xml(&self, id: usize) -> String {
+        let place = &self.places[id];
+        let children: String = self
+            .children(id)
+            .into_iter()
+            .map(|child| self.node_xml(child))
+            .collect();
+        format!(
+            "<NODE><X>{}</X><Y>{}</Y><TYPE>{}</TYPE><NAME translate=\"true\">{}</NAME><CHILDREN>{children}</CHILDREN><UUID_STR>{}</UUID_STR></NODE>",
+            place.x,
+            place.y,
+            place.kind,
+            quick_escape(&place.name),
+            place.persistent
+        )
+    }
+
+    pub(super) fn from_nodes(nodes: &[pktfile::PhysicalNode]) -> Self {
+        let mut ordered: Vec<&pktfile::PhysicalNode> = nodes.iter().collect();
+        ordered.sort_by_key(|node| node.depth);
+        let mut places: Vec<Place> = Vec::new();
+        for node in ordered {
+            let parent = node
+                .parent
+                .as_ref()
+                .and_then(|uuid| places.iter().position(|place| &place.persistent == uuid));
+            #[allow(clippy::cast_possible_truncation)]
+            places.push(Place {
+                persistent: node.uuid.clone(),
+                name: node.name.clone(),
+                kind: i32::try_from(node.kind).unwrap_or_default(),
+                x: node.x as i32,
+                y: node.y as i32,
+                parent,
+                removed: false,
+            });
+        }
+        Self {
+            places,
+            current: 0,
+            cities_added: 0,
         }
     }
 
@@ -207,6 +267,7 @@ fn attribute(physical: &mut Physical, id: usize, step: &Step) -> Result<Value, R
         "getChildCount" => no_args(step, CLASS)
             .map(|()| Value::Int(i32::try_from(physical.children(id).len()).unwrap_or(i32::MAX))),
         "getObjectUuid" => no_args(step, CLASS).map(|()| Value::Uuid(format!("{{place-{id}}}"))),
+        "getPathUuid" => no_args(step, CLASS).map(|()| Value::qstring(&place.persistent)),
         "moveTo" => {
             check_args(step, CLASS, &[TypeCode::Int, TypeCode::Int])?;
             let place = &mut physical.places[id];
@@ -251,6 +312,16 @@ fn attribute(physical: &mut Physical, id: usize, step: &Step) -> Result<Value, R
         }
         other => Err(Remote::unknown_method(CLASS, other)),
     }
+}
+
+fn persistent_id(seed: usize) -> String {
+    format!("{{00000000-0000-4000-8000-{seed:012}}}")
+}
+
+fn quick_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 pub(super) fn by_uuid(state: &State, uuid: &str) -> Option<usize> {
