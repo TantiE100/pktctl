@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::error::ProtocolError;
+use crate::{error::ProtocolError, fields::Fields, frame::FrameBuilder};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -53,6 +53,10 @@ impl TypeCode {
             .and_then(|code| Self::ALL.get(usize::from(code)).copied())
             .ok_or_else(|| ProtocolError::UnknownTypeCode(text.to_owned()))
     }
+
+    fn text(self) -> String {
+        self.code().to_string()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +80,7 @@ pub enum Value {
         element: TypeCode,
         items: Vec<Value>,
     },
+    Bytes(Vec<u8>),
 }
 
 impl Value {
@@ -104,7 +109,7 @@ impl Value {
             Self::Mac(_) => TypeCode::Mac,
             Self::Uuid(_) => TypeCode::Uuid,
             Self::Pair(..) => TypeCode::Pair,
-            Self::Vector { .. } => TypeCode::Vector,
+            Self::Vector { .. } | Self::Bytes(_) => TypeCode::Vector,
         }
     }
 
@@ -134,6 +139,13 @@ impl Value {
         }
     }
 
+    pub fn as_ip(&self) -> Option<Ipv4Addr> {
+        match *self {
+            Self::Ip(address) => Some(address),
+            _ => None,
+        }
+    }
+
     pub fn into_pair(self) -> Option<(Value, Value)> {
         match self {
             Self::Pair(first, second) => Some((*first, *second)),
@@ -148,11 +160,56 @@ impl Value {
         }
     }
 
-    pub(crate) fn encode_argument(&self, out: &mut Vec<String>) -> Result<(), ProtocolError> {
-        let text = match self {
-            Self::Void | Self::Pair(..) | Self::Vector { .. } => {
-                return Err(ProtocolError::UnsupportedArgument(self.type_code()));
+    pub fn into_bytes(self) -> Option<Vec<u8>> {
+        match self {
+            Self::Bytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn encode_argument(&self, out: &mut FrameBuilder) -> Result<(), ProtocolError> {
+        let text = self
+            .scalar_text()
+            .ok_or(ProtocolError::UnsupportedArgument(self.type_code()))?;
+        out.text(&self.type_code().text());
+        out.text(&text);
+        Ok(())
+    }
+
+    pub(crate) fn encode_result(&self, out: &mut FrameBuilder) {
+        if matches!(self, Self::Void) {
+            return;
+        }
+        out.text(&self.type_code().text());
+        self.encode_payload(out);
+    }
+
+    fn encode_payload(&self, out: &mut FrameBuilder) {
+        match self {
+            Self::Void => {}
+            Self::Pair(first, second) => {
+                first.encode_result(out);
+                second.encode_result(out);
             }
+            Self::Vector { element, items } => {
+                out.text(&element.text());
+                out.text(&items.len().to_string());
+                for item in items {
+                    item.encode_payload(out);
+                }
+            }
+            Self::Bytes(bytes) => {
+                out.text(&TypeCode::Byte.text());
+                out.text(&bytes.len().to_string());
+                out.raw(bytes);
+            }
+            scalar => out.text(&scalar.scalar_text().unwrap_or_default()),
+        }
+    }
+
+    fn scalar_text(&self) -> Option<String> {
+        Some(match self {
+            Self::Void | Self::Pair(..) | Self::Vector { .. } | Self::Bytes(_) => return None,
             Self::Byte(number) => number.to_string(),
             Self::Bool(flag) => flag.to_string(),
             Self::Short(number) => number.to_string(),
@@ -165,36 +222,7 @@ impl Value {
             Self::String(text) | Self::QString(text) | Self::Mac(text) | Self::Uuid(text) => {
                 text.clone()
             }
-        };
-        out.push(self.type_code().code().to_string());
-        out.push(text);
-        Ok(())
-    }
-
-    pub(crate) fn encode_result(&self, out: &mut Vec<String>) {
-        match self {
-            Self::Void => {}
-            Self::Pair(first, second) => {
-                out.push(TypeCode::Pair.code().to_string());
-                first.encode_result(out);
-                second.encode_result(out);
-            }
-            Self::Vector { element, items } => {
-                out.push(TypeCode::Vector.code().to_string());
-                out.push(element.code().to_string());
-                out.push(items.len().to_string());
-                for item in items {
-                    let mut encoded = Vec::new();
-                    item.encode_result(&mut encoded);
-                    out.extend(encoded.into_iter().skip(1));
-                }
-            }
-            scalar => {
-                scalar
-                    .encode_argument(out)
-                    .expect("scalar values always encode");
-            }
-        }
+        })
     }
 
     pub(crate) fn decode(fields: &mut Fields<'_>) -> Result<Self, ProtocolError> {
@@ -228,6 +256,9 @@ impl Value {
             TypeCode::Vector => {
                 let element = TypeCode::parse(fields.next("vector element type")?)?;
                 let count: usize = fields.parse("vector length")?;
+                if element == TypeCode::Byte {
+                    return Ok(Self::Bytes(fields.raw(count, "byte list")?.to_vec()));
+                }
                 let items = (0..count)
                     .map(|_| Self::decode_payload(element, fields))
                     .collect::<Result<_, _>>()?;
@@ -237,72 +268,26 @@ impl Value {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct Fields<'a> {
-    remaining: std::slice::Iter<'a, String>,
-}
-
-impl<'a> Fields<'a> {
-    pub(crate) fn new(fields: &'a [String]) -> Self {
-        Self {
-            remaining: fields.iter(),
-        }
-    }
-
-    pub(crate) fn next(&mut self, field: &'static str) -> Result<&'a str, ProtocolError> {
-        self.remaining
-            .next()
-            .map(String::as_str)
-            .ok_or(ProtocolError::MissingField(field))
-    }
-
-    pub(crate) fn next_owned(&mut self, field: &'static str) -> Result<String, ProtocolError> {
-        self.next(field).map(str::to_owned)
-    }
-
-    pub(crate) fn parse<T: std::str::FromStr>(
-        &mut self,
-        field: &'static str,
-    ) -> Result<T, ProtocolError> {
-        let text = self.next(field)?;
-        text.parse().map_err(|_| ProtocolError::InvalidField {
-            field,
-            value: text.to_owned(),
-        })
-    }
-
-    pub(crate) fn peek(&self) -> Option<&'a str> {
-        self.remaining.as_slice().first().map(String::as_str)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.remaining.as_slice().is_empty()
-    }
-
-    pub(crate) fn finish(self) -> Result<(), ProtocolError> {
-        match self.remaining.len() {
-            0 => Ok(()),
-            extra => Err(ProtocolError::TrailingFields(extra)),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn decode(fields: &[&str]) -> Result<Value, ProtocolError> {
-        let owned: Vec<String> = fields.iter().map(ToString::to_string).collect();
-        let mut cursor = Fields::new(&owned);
-        let value = Value::decode(&mut cursor)?;
-        cursor.finish()?;
+    fn decode_body(body: &[u8]) -> Result<Value, ProtocolError> {
+        let mut fields = Fields::new(body);
+        let value = Value::decode(&mut fields)?;
+        fields.finish()?;
         Ok(value)
     }
 
-    fn encode_result(value: &Value) -> Vec<String> {
-        let mut out = Vec::new();
+    fn decode(tokens: &[&str]) -> Result<Value, ProtocolError> {
+        let frame: crate::frame::Frame = tokens.iter().collect();
+        decode_body(frame.body())
+    }
+
+    fn encode_result(value: &Value) -> Vec<u8> {
+        let mut out = FrameBuilder::default();
         value.encode_result(&mut out);
-        out
+        out.build().unwrap().body().to_vec()
     }
 
     #[test]
@@ -340,6 +325,12 @@ mod tests {
     }
 
     #[test]
+    fn decodes_captured_png_byte_list_raw() {
+        let value = decode_body(b"15\x001\x008\x00\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(value.into_bytes().unwrap(), b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
     fn rejects_unknown_type_code() {
         assert!(matches!(
             decode(&["99", "x"]),
@@ -365,16 +356,21 @@ mod tests {
 
     #[test]
     fn encodes_arguments_with_their_type_code() {
-        let mut out = Vec::new();
+        let mut out = FrameBuilder::default();
         Value::qstring("R1").encode_argument(&mut out).unwrap();
         Value::Int(3).encode_argument(&mut out).unwrap();
-        assert_eq!(out, ["9", "R1", "4", "3"]);
+        assert_eq!(out.build().unwrap().body(), b"9\x00R1\x004\x003\x00");
     }
 
     #[test]
     fn refuses_composite_arguments() {
         let pair = Value::Pair(Box::new(Value::Int(1)), Box::new(Value::Int(2)));
-        assert!(pair.encode_argument(&mut Vec::new()).is_err());
+        assert!(pair.encode_argument(&mut FrameBuilder::default()).is_err());
+        assert!(
+            Value::Bytes(vec![1])
+                .encode_argument(&mut FrameBuilder::default())
+                .is_err()
+        );
     }
 
     #[test]
@@ -386,11 +382,10 @@ mod tests {
                 element: TypeCode::String,
                 items: vec![Value::string("a"), Value::string("b")],
             },
+            Value::Bytes(vec![0x89, 0, 0xff]),
         ];
         for value in values {
-            let encoded = encode_result(&value);
-            let fields: Vec<&str> = encoded.iter().map(String::as_str).collect();
-            assert_eq!(decode(&fields).unwrap(), value);
+            assert_eq!(decode_body(&encode_result(&value)).unwrap(), value);
         }
     }
 }

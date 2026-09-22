@@ -1,4 +1,4 @@
-use crate::{error::ProtocolError, value::Fields};
+use crate::{error::ProtocolError, fields::Fields, frame::FrameBuilder};
 
 const SIGNATURE: &str = "PTMP";
 const PROTOCOL_VERSION: i32 = 1;
@@ -56,8 +56,8 @@ impl Negotiation {
         .map(|(name, actual, expected)| format!("{name} is {actual}, pktctl requires {expected}"))
     }
 
-    pub(crate) fn encode(&self, out: &mut Vec<String>) {
-        out.extend([
+    pub(crate) fn encode(&self, out: &mut FrameBuilder) {
+        for field in [
             SIGNATURE.to_owned(),
             PROTOCOL_VERSION.to_string(),
             self.app_uuid.clone(),
@@ -68,7 +68,9 @@ impl Negotiation {
             self.timestamp.clone(),
             self.keepalive_secs.to_string(),
             self.reserved.clone(),
-        ]);
+        ] {
+            out.text(&field);
+        }
     }
 
     pub(crate) fn decode(fields: &mut Fields<'_>) -> Result<Self, ProtocolError> {
@@ -103,6 +105,11 @@ impl Negotiation {
 mod tests {
     use super::*;
 
+    fn body(fields: &[String]) -> Vec<u8> {
+        let frame: crate::frame::Frame = fields.iter().collect();
+        frame.body().to_vec()
+    }
+
     fn captured_response() -> Vec<String> {
         [
             "PTMP",
@@ -122,7 +129,8 @@ mod tests {
 
     #[test]
     fn reads_packet_tracer_version() {
-        let negotiation = Negotiation::decode(&mut Fields::new(&captured_response())).unwrap();
+        let negotiation =
+            Negotiation::decode(&mut Fields::new(&body(&captured_response()))).unwrap();
         assert_eq!(negotiation.pt_version(), Some("9.0.1.0858"));
         assert_eq!(negotiation.unsupported_setting(), None);
     }
@@ -141,15 +149,16 @@ mod tests {
     fn rejects_foreign_signature() {
         let mut fields = captured_response();
         fields[0] = "HTTP".into();
-        assert!(Negotiation::decode(&mut Fields::new(&fields)).is_err());
+        assert!(Negotiation::decode(&mut Fields::new(&body(&fields))).is_err());
     }
 
     #[test]
     fn round_trips() {
         let request =
             Negotiation::client_request("{a}", "20260101000000").with_pt_version("9.0.1.0858");
-        let mut out = Vec::new();
-        request.encode(&mut out);
+        let mut builder = FrameBuilder::default();
+        request.encode(&mut builder);
+        let out = builder.build().unwrap().body().to_vec();
         assert_eq!(
             Negotiation::decode(&mut Fields::new(&out)).unwrap(),
             request

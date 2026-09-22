@@ -2,7 +2,9 @@ use std::fmt;
 
 use crate::{
     error::ProtocolError,
-    value::{Fields, TypeCode, Value},
+    fields::Fields,
+    frame::FrameBuilder,
+    value::{TypeCode, Value},
 };
 
 const END_OF_ARGUMENTS: &str = "0";
@@ -45,13 +47,13 @@ impl Call {
         &self.steps
     }
 
-    pub(crate) fn encode(&self, out: &mut Vec<String>) -> Result<(), ProtocolError> {
+    pub(crate) fn encode(&self, out: &mut FrameBuilder) -> Result<(), ProtocolError> {
         for step in &self.steps {
-            out.push(step.method.clone());
+            out.text(&step.method);
             for arg in &step.args {
                 arg.encode_argument(out)?;
             }
-            out.push(END_OF_ARGUMENTS.to_owned());
+            out.text(END_OF_ARGUMENTS);
         }
         Ok(())
     }
@@ -110,34 +112,37 @@ mod tests {
             .method("getIpAddress", [])
     }
 
+    fn encoded(call: &Call) -> Vec<u8> {
+        let mut out = FrameBuilder::default();
+        call.encode(&mut out).unwrap();
+        out.build().unwrap().body().to_vec()
+    }
+
     #[test]
     fn encodes_like_the_official_framework() {
-        let mut out = Vec::new();
-        captured_call().encode(&mut out).unwrap();
-        assert_eq!(
-            out,
-            [
-                "network",
-                "0",
-                "getDevice",
-                "9",
-                "R1",
-                "0",
-                "getPort",
-                "8",
-                "GigabitEthernet0/0.10",
-                "0",
-                "getIpAddress",
-                "0"
-            ]
-        );
+        let expected: crate::frame::Frame = [
+            "network",
+            "0",
+            "getDevice",
+            "9",
+            "R1",
+            "0",
+            "getPort",
+            "8",
+            "GigabitEthernet0/0.10",
+            "0",
+            "getIpAddress",
+            "0",
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(encoded(&captured_call()), expected.body());
     }
 
     #[test]
     fn decodes_what_it_encodes() {
-        let mut out = Vec::new();
-        captured_call().encode(&mut out).unwrap();
-        let decoded = Call::decode(&mut Fields::new(&out)).unwrap();
+        let body = encoded(&captured_call());
+        let decoded = Call::decode(&mut Fields::new(&body)).unwrap();
         assert_eq!(decoded, captured_call());
     }
 
