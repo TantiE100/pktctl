@@ -89,3 +89,8 @@ Javadoc that ship with Packet Tracer; see
 each method's wire name and argument encoders from the bytecode of its
 implementation, following delegations through `IPCFactory`, so the index
 matches what the official Java client sends.
+
+The index carries signatures, not prose: the Javadoc summaries belong to Cisco
+and are left out, so `describe_ipc` matches on class and method names. Rebuild
+the index with `--with-summaries` for a local copy that also answers with each
+method's description.
