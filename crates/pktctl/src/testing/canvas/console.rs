@@ -13,6 +13,8 @@ const MORE: &str = " --More-- ";
 const SPACE: i8 = 32;
 const CTRL_SHIFT_6: i8 = 30;
 const RELOAD: &str = "reload";
+const ENABLE_QUESTION: &str = "Password:";
+const ENABLE_SECRET: &str = "enable secret ";
 const RELOAD_QUESTION: &str = "Proceed with reload? [confirm]";
 
 pub(super) fn handle(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remote> {
@@ -80,20 +82,10 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
     }
 
     let terminal = terminal_id(&device.name);
-    if device.running.as_deref() == Some(RELOAD) {
-        device.running = None;
-        let confirmed = keystroke.is_empty() || keystroke.eq_ignore_ascii_case("y");
-        if confirmed {
-            device.console_mode = "user";
-        }
-        device.console_prompt = prompt(hostname, device.console_mode);
-        state.events.extend([
-            written(&terminal, "\n"),
-            ended(&terminal, RELOAD, 0),
-            written(&terminal, &device.console_prompt),
-        ]);
+    if device.running.is_some() && answer_pending(state, index, keystroke) {
         return;
     }
+    let device = &mut state.devices[index];
     let mode = device.console_mode;
     device.cli.push((mode.to_owned(), keystroke.to_owned()));
     let mut events = vec![written(&terminal, &format!("{keystroke}\n"))];
@@ -105,6 +97,23 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
         _ => None,
     };
 
+    if let Some(secret) = keystroke.strip_prefix(ENABLE_SECRET)
+        && mode == "global"
+    {
+        device.enable_password = Some(secret.to_owned());
+        events.push(written(&terminal, "\n"));
+        events.push(ended(&terminal, keystroke, 0));
+        events.push(written(&terminal, &device.console_prompt));
+        state.events.extend(events);
+        return;
+    }
+    if keystroke == "enable" && mode == "user" && device.enable_password.is_some() {
+        events.push(written(&terminal, ENABLE_QUESTION));
+        device.running = Some(ENABLE_QUESTION.to_owned());
+        ENABLE_QUESTION.clone_into(&mut device.console_prompt);
+        state.events.extend(events);
+        return;
+    }
     if keystroke == RELOAD && mode == "enable" {
         events.push(written(&terminal, RELOAD_QUESTION));
         device.running = Some(RELOAD.to_owned());
@@ -157,6 +166,44 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
         events.push(written(&terminal, &device.console_prompt));
     }
     state.events.extend(events);
+}
+
+/// Answers a question the console left open: the enable password or a reload confirmation.
+fn answer_pending(state: &mut State, index: usize, keystroke: &str) -> bool {
+    let device = &mut state.devices[index];
+    let hostname = device.model().hostname;
+    let terminal = terminal_id(&device.name);
+    if device.running.as_deref() == Some(ENABLE_QUESTION) {
+        device.running = None;
+        let accepted = device.enable_password.as_deref() == Some(keystroke);
+        if accepted {
+            device.console_mode = "enable";
+        }
+        device.console_prompt = prompt(hostname, device.console_mode);
+        let mut events = vec![written(&terminal, "\n")];
+        if !accepted {
+            events.push(written(&terminal, "% Bad secrets\n"));
+        }
+        events.push(ended(&terminal, "password", 0));
+        events.push(written(&terminal, &device.console_prompt));
+        state.events.extend(events);
+        return true;
+    }
+    if device.running.as_deref() == Some(RELOAD) {
+        device.running = None;
+        let confirmed = keystroke.is_empty() || keystroke.eq_ignore_ascii_case("y");
+        if confirmed {
+            device.console_mode = "user";
+        }
+        device.console_prompt = prompt(hostname, device.console_mode);
+        state.events.extend([
+            written(&terminal, "\n"),
+            ended(&terminal, RELOAD, 0),
+            written(&terminal, &device.console_prompt),
+        ]);
+        return true;
+    }
+    false
 }
 
 fn next_page(state: &mut State, index: usize) {

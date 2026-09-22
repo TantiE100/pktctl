@@ -12,6 +12,8 @@ IOS on routers and switches: single commands and whole configuration blocks.
 | `command` | yes | One IOS command. |
 | `mode` | no | `user`, `enable` (default), `global` or `current`. |
 | `timeout_secs` | no | Seconds to wait for the command to end. Default 30, maximum 300. |
+| `password` | no | Console line password, when the device asks `Password:` on the console. |
+| `enable_password` | no | Privileged mode password (`enable secret`). |
 
 ```json
 { "device": "R1", "command": "ping 192.168.10.11" }
@@ -85,6 +87,12 @@ and says so rather than guessing one.
   before it forwards, so the first pings through a new link can time out for
   up to about 30 seconds.
 - PCs and servers have no IOS console; the error points to `run_host_command`.
+- **Locked consoles.** A device with `line console 0` + `password`, or with
+  `enable secret`, asks before letting anything through. Give `password` and
+  `enable_password` and the tool types them where IOS asks; without them the
+  error names the field to fill in and leaves the console back at its prompt.
+  `configure_ios` does not need them: Packet Tracer's `enterCommand` applies
+  configuration without going through the console login (verified on 9.0.1).
 - **Questions stay open.** When the output ends in a question (`[confirm]`,
   `[yes/no]:`, `Destination filename [startup-config]?`, `Password:`), the
   reply has `finished: false` and `question`, and nothing is interrupted.
