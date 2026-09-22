@@ -67,8 +67,13 @@ dedicated tool and how each one was validated.
 ## Documentation
 
 Everything lives in [docs/](docs/README.md): architecture, features, the PTMP
-wire reference and the development workflow.
+wire reference and the development workflow. Releases are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Cisco, Packet Tracer and Cisco IOS are trademarks of Cisco
+Systems, Inc.; this project is an independent client and is neither affiliated
+with nor endorsed by Cisco. It ships no Packet Tracer code, files or
+documentation: you need your own installation of Packet Tracer for it to talk
+to anything.

@@ -80,3 +80,24 @@ Run a single test with `cargo test -p pktctl --test live -- --ignored <name>`.
 - Branch per change: `feat/…`, `fix/…`, `docs/…`, `chore/…`.
 - Conventional commit messages, atomic commits.
 - Merge with `git merge --no-ff` so each branch stays visible in history.
+
+## Releasing
+
+The three crates share one version, set in `[workspace.package]`.
+
+1. Bump `version` in `Cargo.toml` and move the `Unreleased` entries of
+   [CHANGELOG.md](../CHANGELOG.md) into a section for the new version.
+2. `make check`, then the live suite against a real Packet Tracer.
+3. Commit on a branch, merge with `--no-ff`, and tag the merge `vX.Y.Z`.
+4. To publish on crates.io, publish in dependency order: `ptmp`, then
+   `pktfile`, then `pktctl`. Check first with
+   `cargo package -p <crate> --list` that nothing from a Packet Tracer
+   installation slipped into the package.
+
+## What must never ship
+
+- Packet Tracer code, `.pkt` files or documentation. The IPC index is
+  signatures only; an index built with `--with-summaries` carries Cisco's
+  Javadoc prose and stays on your machine.
+- Credentials. `PKTCTL_SECRET` belongs in the environment, never in a file
+  under version control.
