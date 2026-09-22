@@ -75,4 +75,6 @@ to the [wireless](../wireless/README.md) feature.
 | delete | `...getLogicalWorkspace().deleteLink(device: QString, port: string)` returns bool |
 
 Cable codes are `ConnectType` values: straight 8100, cross 8101, rollover 8102,
-fiber 8103, serial 8106, console 8108, fiber multimode 8117.
+fiber 8103, serial 8106, console 8108, fiber multimode 8117. Packet Tracer 9.0.1
+stores a `console` cable as a rollover, so `connect` and `list_links` report
+`rollover` for it: that is what Packet Tracer has, read back.

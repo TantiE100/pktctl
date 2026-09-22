@@ -85,6 +85,15 @@ and says so rather than guessing one.
   before it forwards, so the first pings through a new link can time out for
   up to about 30 seconds.
 - PCs and servers have no IOS console; the error points to `run_host_command`.
+- **Questions stay open.** When the output ends in a question (`[confirm]`,
+  `[yes/no]:`, `Destination filename [startup-config]?`, `Password:`), the
+  reply has `finished: false` and `question`, and nothing is interrupted.
+  Answer with another `run_cli` in mode `current`: `yes`, a file name, or an
+  empty command for Enter. Until then other modes are refused, because typing
+  `end` would answer the question.
+- **Reloads.** `reload` asks `[confirm]`; answering boots the device again,
+  and the next `run_cli` skips the rest of the boot (`isBooting`,
+  `skipBoot`) and presses Enter at *Press RETURN to get started*.
 
 ## IPC calls
 
