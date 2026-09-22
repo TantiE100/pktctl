@@ -148,6 +148,7 @@ struct State {
     options: std::collections::BTreeMap<&'static str, bool>,
     activity: Option<activity::Activity>,
     description: String,
+    exported: Option<Network>,
 }
 
 impl State {

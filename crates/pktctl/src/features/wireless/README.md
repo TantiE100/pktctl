@@ -47,16 +47,18 @@ So `connect_wireless`:
 
 1. Sets SSID, authentication, encryption and key in the client's wireless
    process, so its Config tab shows the same values.
-2. Saves the network, rewrites the client's `CURRENT_PROFILE` in the file with
-   [pktfile](../../../../pktfile/README.md), reopens it and removes the power
-   units Packet Tracer adds on open, as `rename_location` does.
+2. Takes the network as bytes (`fileSaveToBytes`), rewrites the client's
+   `CURRENT_PROFILE` with [pktfile](../../../../pktfile/README.md), opens the
+   result as a temporary copy and removes the power units Packet Tracer adds
+   on open, as `rename_location` does. Your own file is not written.
 3. Waits up to 15 seconds, pressing Fast Forward, for `getCurrentApMac`, and
    maps that MAC to the access point whose radio port has it.
 4. Addresses the radio port like `configure_host`: DHCP, or the static IP,
    mask, gateway and DNS.
 
-A wrong key or SSID leaves `associated: false`. The network ends up saved, to
-its current file or to a temporary file if it was never saved.
+A wrong key or SSID leaves `associated: false`, with a `diagnosis`. Packet
+Tracer ends up with the temporary copy open (the reply's `file`); save with
+`save_network` and a path to keep the change.
 
 - **Range is distance, not rooms.** Measured on 9.0.1 with a laptop's
   `PT-LAPTOP-NM-1W`: AccessPoint-PT, AccessPoint-PT-N, AccessPoint-PT-AC and
