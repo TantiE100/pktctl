@@ -152,6 +152,7 @@ async fn address_lan(client: &mut McpClient) {
 }
 
 async fn verify_lan(client: &mut McpClient) {
+    ok(client, "fast_forward", json!({})).await;
     let ports = ok(client, "list_ports", json!({ "device": ROUTER })).await;
     let uplink = ports["ports"]
         .as_array()
@@ -444,6 +445,7 @@ async fn follows_a_ping_in_simulation_mode() {
         )
         .await;
     }
+    ok(&mut client, "fast_forward", json!({})).await;
     ping(&mut client, PC_A, "10.77.0.2").await;
     ok(&mut client, "simulation_mode", json!({ "on": true })).await;
     ok(&mut client, "simulation_step", json!({ "action": "reset" })).await;

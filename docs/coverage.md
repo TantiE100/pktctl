@@ -33,7 +33,7 @@ Validation levels:
 | Physical workspace: renaming locations, creating buildings (not in the IPC API) | `rename_location`, `add_building`, through `.pkt` editing | live |
 | Simulation mode, simple PDUs, stepping, event list with decisions | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | live |
 | Complex PDUs, scenarios, event-list GUI filters, play speed | none yet | ipc |
-| Device power | none yet | ipc |
+| Device power, fast forward, power cycling | `set_power`, `fast_forward`, `power_cycle_all` | live |
 | Wireless (SSID, security, association) | none yet | ipc |
 | Server services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | none yet | ipc |
 | Preferences and workspace options | none yet | ipc |
