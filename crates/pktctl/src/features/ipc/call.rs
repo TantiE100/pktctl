@@ -95,10 +95,11 @@ async fn start<P: PacketTracer>(
     }
     if from.starts_with('{') && from.ends_with('}') {
         let call = Call::root_with(OBJECT_ROOT, [Value::string(from)]);
-        let class = dynamic_class(packet_tracer, api, &call, BASE_CLASS).await?;
+        let rendered = format!("{OBJECT_ROOT}(\"{from}\")");
+        let class = dynamic_class(packet_tracer, api, &call, BASE_CLASS, &rendered).await?;
         return Ok(Resolved {
             call,
-            rendered: format!("{OBJECT_ROOT}(\"{from}\")"),
+            rendered,
             class,
             last: None,
         });
@@ -129,7 +130,7 @@ async fn apply<P: PacketTracer>(
     let mut class = current.class.clone();
     let mut candidates = api.methods_named(&class, &step.method);
     if candidates.is_empty() {
-        class = dynamic_class(packet_tracer, api, &current.call, &class).await?;
+        class = dynamic_class(packet_tracer, api, &current.call, &class, &current.rendered).await?;
         candidates = api.methods_named(&class, &step.method);
     }
     if candidates.is_empty() {
@@ -182,6 +183,7 @@ async fn dynamic_class<P: PacketTracer>(
     api: &ApiIndex,
     call: &Call,
     declared: &str,
+    rendered: &str,
 ) -> Result<String, PtError> {
     let reply = packet_tracer
         .call(call.clone().method("getClassName", []))
@@ -190,6 +192,11 @@ async fn dynamic_class<P: PacketTracer>(
         Ok(reply) => expect_text(&reply, "class name")?,
         Err(error @ (PtError::Unreachable(_) | PtError::Busy(_) | PtError::Transport(_))) => {
             return Err(error);
+        }
+        Err(PtError::NotFound(class)) => {
+            return Err(PtError::InvalidInput(format!(
+                "`{rendered}` returned no {class}; check its arguments"
+            )));
         }
         Err(_) => return Ok(declared.to_owned()),
     };

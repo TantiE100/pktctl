@@ -251,6 +251,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn blames_a_missing_object_rather_than_the_next_method() {
+        let packet_tracer = ScriptedPacketTracer::new(|call| match methods(call).as_slice() {
+            ["network", "getDevice", "getProcess", "getClassName"] => {
+                Err(PtError::NotFound("Process".into()))
+            }
+            other => panic!("unexpected call {other:?}"),
+        });
+        let error = call_ipc(
+            &packet_tracer,
+            &request(
+                "network",
+                vec![
+                    step("getDevice", json!(["PC1"])),
+                    step("getProcess", json!(["ACLProcess"])),
+                    step("getAclCount", json!([])),
+                ],
+            ),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains(r#"getProcess("ACLProcess")` returned no Process"#),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
     async fn returns_objects_as_references_and_resumes_from_them() {
         let packet_tracer = ScriptedPacketTracer::new(|call| {
             let steps = call.steps();
