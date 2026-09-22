@@ -53,30 +53,8 @@ pub(super) fn handle(
         _ => {}
     }
     let activity = activity.ok_or_else(|| Remote::unknown_method("NetworkFile", &step.method))?;
-    match step.method.as_str() {
-        "isPasswordConfirmed" => {
-            return no_args(step, CLASS).map(|()| Value::Bool(activity.unlocked));
-        }
-        "confirmPassword" => {
-            check_args(step, CLASS, &[TypeCode::QString])?;
-            let given = step.args[0].as_str().unwrap_or_default();
-            activity.unlocked = activity
-                .fixture
-                .password
-                .as_deref()
-                .is_none_or(|password| password == given);
-            return Ok(Value::Bool(activity.unlocked));
-        }
-        "getInstructionCount" | "getInstruction" => {}
-        method if !activity.unlocked => {
-            return Err(Remote {
-                class: CLASS.into(),
-                message: format!(
-                    "Activity file requires password, call ipc.appWindow().getActiveFile().confirmPassword(passwordString) \"{method}\""
-                ),
-            });
-        }
-        _ => {}
+    if let Some(reply) = password_gate(activity, step)? {
+        return Ok(reply);
     }
     let (correct, total) = activity.fixture.items;
     let percent = if total == 0 {
@@ -147,5 +125,31 @@ pub(super) fn handle(
             Ok(Value::Void)
         }
         other => Err(Remote::unknown_method(CLASS, other)),
+    }
+}
+
+fn password_gate(activity: &mut Activity, step: &Step) -> Result<Option<Value>, Remote> {
+    match step.method.as_str() {
+        "isPasswordConfirmed" => {
+            no_args(step, CLASS).map(|()| Some(Value::Bool(activity.unlocked)))
+        }
+        "confirmPassword" => {
+            check_args(step, CLASS, &[TypeCode::QString])?;
+            let given = step.args[0].as_str().unwrap_or_default();
+            activity.unlocked = activity
+                .fixture
+                .password
+                .as_deref()
+                .is_none_or(|password| password == given);
+            Ok(Some(Value::Bool(activity.unlocked)))
+        }
+        "getInstructionCount" | "getInstruction" => Ok(None),
+        method if !activity.unlocked => Err(Remote {
+            class: CLASS.into(),
+            message: format!(
+                "Activity file requires password, call ipc.appWindow().getActiveFile().confirmPassword(passwordString) \"{method}\""
+            ),
+        }),
+        _ => Ok(None),
     }
 }
