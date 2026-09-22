@@ -8,7 +8,9 @@ use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub use firewall::{FirewallRequest, FirewallState, set_firewall};
+pub use firewall::{
+    Family, FirewallRequest, FirewallRule, FirewallState, RuleAction, set_firewall,
+};
 pub use ipv6::{Ipv6Config, Ipv6Mode, Ipv6Request, configure_ipv6};
 
 use crate::{
@@ -352,9 +354,10 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "set_host_firewall",
-        description = "Switch the inbound firewall of a PC, laptop or server on or off, for IPv4 \
-                       and IPv6 separately, like its Firewall and IPv6 Firewall apps. Returns \
-                       both states.",
+        description = "Use the Firewall and IPv6 Firewall apps of a PC, laptop or server: \
+                       switch each one on or off, add rules (permit or deny ip, icmp, tcp or \
+                       udp, by remote address and port) and remove them. Returns both switches \
+                       and the rules in the order the firewall evaluates them.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -464,7 +467,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn switches_each_firewall_independently() {
+    async fn switches_each_firewall_and_keeps_its_rules() {
         let packet_tracer = lab().await;
         let request = |ipv4, ipv6| FirewallRequest {
             device: "PC1".into(),
@@ -484,6 +487,67 @@ mod tests {
             .await
             .unwrap();
         assert!(!state.ipv4 && state.ipv6);
+
+        let rule = |family, action, protocol: &str, remote_ip: Option<&str>, port| FirewallRule {
+            family,
+            action,
+            protocol: protocol.into(),
+            remote_ip: remote_ip.map(Into::into),
+            remote_mask: remote_ip.map(|_| "0.0.0.0".to_owned()),
+            port,
+        };
+        let added = set_firewall(
+            &packet_tracer,
+            &FirewallRequest {
+                device: "PC1".into(),
+                add_rules: vec![
+                    rule(Family::Ipv4, RuleAction::Deny, "icmp", None, None),
+                    rule(
+                        Family::Ipv4,
+                        RuleAction::Permit,
+                        "tcp",
+                        Some("10.0.0.5"),
+                        Some(80),
+                    ),
+                    rule(Family::Ipv6, RuleAction::Deny, "ip", None, None),
+                ],
+                ..FirewallRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            added.ipv4_rules,
+            ["deny icmp any any", "permit tcp host 10.0.0.5 any eq 80"]
+        );
+        assert_eq!(added.ipv6_rules, ["deny ip any any"]);
+
+        let removed = set_firewall(
+            &packet_tracer,
+            &FirewallRequest {
+                device: "PC1".into(),
+                remove_rules: vec![rule(Family::Ipv4, RuleAction::Deny, "icmp", None, None)],
+                ..FirewallRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(removed.ipv4_rules, ["permit tcp host 10.0.0.5 any eq 80"]);
+
+        let missing = set_firewall(
+            &packet_tracer,
+            &FirewallRequest {
+                device: "PC1".into(),
+                remove_rules: vec![rule(Family::Ipv4, RuleAction::Deny, "udp", None, None)],
+                ..FirewallRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            missing.to_string().contains("match an existing"),
+            "{missing}"
+        );
     }
 
     fn static_request(ip: &str, mask: &str, gateway: Option<&str>) -> HostConfigRequest {

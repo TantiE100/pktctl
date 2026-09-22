@@ -2,6 +2,7 @@ mod activity;
 mod catalog;
 mod console;
 mod desktop;
+mod firewall;
 mod models;
 mod modules;
 mod network;
@@ -84,6 +85,7 @@ struct Device {
     powered: bool,
     cards: Vec<Option<&'static str>>,
     desktop: Option<desktop::Desktop>,
+    acls: firewall::Acls,
 }
 
 impl Device {
@@ -114,6 +116,7 @@ impl Device {
             powered: true,
             cards: vec![None; model.card_slots],
             desktop: matches!(model.class, "Pc" | "Server").then(desktop::Desktop::default),
+            acls: firewall::Acls::default(),
         }
     }
 

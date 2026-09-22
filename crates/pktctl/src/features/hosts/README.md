@@ -10,7 +10,7 @@ Routers and switches are configured through IOS instead.
 |---|---|
 | `configure_host` | IPv4: DHCP, or static address, mask, gateway and DNS. |
 | `configure_host_ipv6` | IPv6: `static` with `address/prefix`, `auto` (SLAAC) or `off`; gateway and DNS. |
-| `set_host_firewall` | Switches the IPv4 and IPv6 inbound firewalls on or off. |
+| `set_host_firewall` | Switches the IPv4 and IPv6 inbound firewalls on or off, and adds or removes their rules. |
 
 ### `configure_host`
 
@@ -70,12 +70,33 @@ server.
 ### `set_host_firewall`
 
 ```json
-{ "device": "PC1", "ipv4": true }
+{ "device": "PC1", "ipv4": true, "add_rules": [
+  { "action": "deny", "protocol": "icmp" },
+  { "action": "permit", "protocol": "tcp", "port": 80, "remote_ip": "192.168.10.10", "remote_mask": "0.0.0.0" }
+] }
 ```
 
-Each of `ipv4` and `ipv6` is optional; the answer reports both. The firewall
-rules themselves (the list inside the Firewall app) have no IPC call; see
-[desktop](../desktop/README.md#what-cannot-be-driven).
+```json
+{ "device": "PC1", "port": "FastEthernet0", "ipv4": true, "ipv6": false,
+  "ipv4_rules": ["deny icmp any any", "permit tcp host 192.168.10.10 any eq 80"], "ipv6_rules": [] }
+```
+
+Each of `ipv4` and `ipv6` is optional; the answer reports both switches and
+every rule. Rules are evaluated in order, like an ACL: a `permit` before a
+`deny` wins, which is what the Firewall app shows.
+
+- `remote_mask` is an IPv4 wildcard (`0.0.0.0` one host, `255.255.255.255`
+  any) or an IPv6 prefix length (`128` one host, `0` any).
+- `port` only applies to tcp and udp. Packet Tracer keeps a single port per
+  rule and matches on it, so that is what the tool sends.
+- `remove_rules` must describe an existing rule exactly, and Packet Tracer
+  refuses to add the same rule twice.
+- Verified on 9.0.1: with the firewall on, `deny icmp any any` drops pings to
+  that host.
+
+The rules live in the ACL numbered 101 of the host's `AclProcess` (and
+`Aclv6Process`), which is where the Firewall app writes them; the tool
+creates that ACL the first time.
 
 ## IPC calls
 
@@ -86,6 +107,7 @@ rules themselves (the list inside the Firewall app) have no IPC call; see
 | read back | `...getPort(p)` then `isDhcpClientOn()`, `getIpAddress()`, `getSubnetMask()` |
 | IPv6 | `...getPort(p)` then `setIpv6Enabled(bool)`, `setIpv6AddressAutoConfig(bool)`, `removeAllIpv6Addresses()`, `addIpv6Address(ip, prefix, UNICAST, false)`, `setv6DefaultGateway(ip)`, `setv6ServerIp(ip)`, `getIpv6Addresses()` |
 | firewall | `...getPort(p)` then `setInboundFirewallService(bool)`, `setInboundIpv6FirewallService(bool)`, `isInboundFirewallOn()`, `isInboundIpv6FirewallOn()` |
+| firewall rules | `network().getDevice(d).getProcess("AclProcess"\|"Aclv6Process")` then `addAcl("101")`, `getAcl("101")` and `addExtStatement`, `removeExtStatement`, `getCommandCount`, `getCommandAt` |
 
 The port flag is the one that decides DHCP versus static. Verified on Packet
 Tracer 9.0.1: `setDhcpFlag(false)` on the device leaves the port in DHCP mode,

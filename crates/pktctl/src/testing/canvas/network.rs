@@ -3,7 +3,7 @@ use std::net::Ipv4Addr;
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Endpoint, Port, State, console, desktop, modules, physical,
+    Endpoint, Port, State, console, desktop, firewall, modules, physical,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
     services, wireless,
 };
@@ -66,6 +66,9 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
             match state.devices[index].services.as_mut() {
                 Some(services_state) if services::serves(&name) => {
                     services::process(services_state, &name, rest)
+                }
+                _ if firewall::serves(&name) => {
+                    firewall::process(&mut state.devices[index].acls, &name, rest)
                 }
                 _ if has_desktop && desktop::serves(&name) => {
                     desktop::process(state, index, &name, rest)
