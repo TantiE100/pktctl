@@ -17,6 +17,7 @@ activities, is reachable here without waiting for a dedicated tool.
 | `search` | Keywords matched against class names, method names and Javadoc summaries, best matches first. |
 | `class` | One class with all its methods, inherited ones included, plus its ancestors and subclasses. |
 | `enum` | The names and wire values an enum argument accepts. |
+| `events` | The events a class raises, for `watch_events`; an empty string lists every class. |
 | `limit` | Maximum search results (default 40, maximum 200). |
 
 With no argument it returns the roots and totals: 346 classes, 3111 methods and

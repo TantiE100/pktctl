@@ -361,7 +361,7 @@ fn decode(api: &ApiIndex, kind: Kind<'_>, value: Value) -> Json {
     }
 }
 
-fn plain(api: &ApiIndex, value: Value) -> Json {
+pub(crate) fn plain(api: &ApiIndex, value: Value) -> Json {
     match value {
         Value::Void => Json::Null,
         Value::Bool(flag) => Json::Bool(flag),
