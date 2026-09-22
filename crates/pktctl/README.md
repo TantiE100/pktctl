@@ -21,6 +21,8 @@ MCP over stdio and talks to Packet Tracer through [`ptmp`](../ptmp/README.md).
 | `PKTCTL_SECRET` | yes | |
 | `PKTCTL_ADDR` | no | `127.0.0.1:39000` |
 | `PKTCTL_CALL_TIMEOUT_SECS` | no | `30` |
+| `PKTCTL_PT_HOME` | no | searched in the usual install folders |
+| `PKTCTL_SETUP_DIR` | no | `~/.config/pktctl` |
 | `PKTCTL_LOG` | no | `warn` (stderr) |
 
 `pktctl --version` prints the version and exits.

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use ptmp::{Credentials, SessionConfig};
 
@@ -9,11 +9,23 @@ pub mod env {
     pub const APP_ID: &str = "PKTCTL_APP_ID";
     pub const SECRET: &str = "PKTCTL_SECRET";
     pub const CALL_TIMEOUT_SECS: &str = "PKTCTL_CALL_TIMEOUT_SECS";
+    pub const PT_HOME: &str = "PKTCTL_PT_HOME";
+    pub const SETUP_DIR: &str = "PKTCTL_SETUP_DIR";
+    pub const HOME: &str = "HOME";
+    pub const USER_PROFILE: &str = "USERPROFILE";
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupSettings {
+    pub credentials: Credentials,
+    pub packet_tracer_home: Option<PathBuf>,
+    pub output_dir: PathBuf,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub session: SessionConfig,
+    pub setup: SetupSettings,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -41,6 +53,20 @@ impl Config {
             secret: required(env::SECRET)?,
         };
         let addr = lookup(env::ADDR).unwrap_or_else(|| DEFAULT_ADDR.to_owned());
+        let setup = SetupSettings {
+            credentials: credentials.clone(),
+            packet_tracer_home: lookup(env::PT_HOME).map(PathBuf::from),
+            output_dir: lookup(env::SETUP_DIR).map_or_else(
+                || {
+                    lookup(env::HOME)
+                        .or_else(|| lookup(env::USER_PROFILE))
+                        .map_or_else(std::env::temp_dir, PathBuf::from)
+                        .join(".config")
+                        .join("pktctl")
+                },
+                PathBuf::from,
+            ),
+        };
         let mut session = SessionConfig::new(addr, credentials);
 
         if let Some(raw) = lookup(env::CALL_TIMEOUT_SECS) {
@@ -55,7 +81,7 @@ impl Config {
             session.call_timeout = Duration::from_secs(seconds);
         }
 
-        Ok(Self { session })
+        Ok(Self { session, setup })
     }
 }
 
@@ -116,6 +142,34 @@ mod tests {
             .unwrap_err();
             assert!(matches!(error, ConfigError::InvalidTimeout { .. }));
         }
+    }
+
+    #[test]
+    fn setup_files_go_under_the_home_config_folder() {
+        let config = load(&[
+            (env::APP_ID, "app"),
+            (env::SECRET, "key"),
+            (env::HOME, "/Users/student"),
+        ])
+        .unwrap();
+        assert_eq!(
+            config.setup.output_dir,
+            PathBuf::from("/Users/student/.config/pktctl")
+        );
+        assert_eq!(config.setup.packet_tracer_home, None);
+
+        let custom = load(&[
+            (env::APP_ID, "app"),
+            (env::SECRET, "key"),
+            (env::SETUP_DIR, "/srv/pktctl"),
+            (env::PT_HOME, "/opt/pt"),
+        ])
+        .unwrap();
+        assert_eq!(custom.setup.output_dir, PathBuf::from("/srv/pktctl"));
+        assert_eq!(
+            custom.setup.packet_tracer_home,
+            Some(PathBuf::from("/opt/pt"))
+        );
     }
 
     #[test]

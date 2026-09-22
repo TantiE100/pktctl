@@ -7,22 +7,25 @@ use rmcp::{
     tool_handler,
 };
 
-use crate::packet_tracer::PacketTracer;
+use crate::{config::SetupSettings, packet_tracer::PacketTracer};
 
 const INSTRUCTIONS: &str = "pktctl drives a running Cisco Packet Tracer over its native IPC \
 protocol. Call `status` first: it reports whether Packet Tracer is reachable and why not. \
 Use `list_devices` to discover device names before targeting them, and `run_cli` to execute \
-IOS commands on routers and switches.";
+IOS commands on routers and switches. If `status` says the app id is rejected, call \
+`setup_exapp` and follow its steps once.";
 
 pub struct PktctlServer<P> {
     packet_tracer: Arc<P>,
+    setup: Arc<SetupSettings>,
     tool_router: ToolRouter<Self>,
 }
 
 impl<P: PacketTracer> PktctlServer<P> {
-    pub fn new(packet_tracer: P) -> Self {
+    pub fn new(packet_tracer: P, setup: SetupSettings) -> Self {
         Self {
             packet_tracer: Arc::new(packet_tracer),
+            setup: Arc::new(setup),
             tool_router: Self::status_router()
                 + Self::devices_router()
                 + Self::cli_router()
@@ -31,12 +34,17 @@ impl<P: PacketTracer> PktctlServer<P> {
                 + Self::links_router()
                 + Self::hosts_router()
                 + Self::modules_router()
-                + Self::workspace_router(),
+                + Self::workspace_router()
+                + Self::setup_router(),
         }
     }
 
     pub(crate) fn packet_tracer(&self) -> &P {
         &self.packet_tracer
+    }
+
+    pub(crate) fn setup_settings(&self) -> &SetupSettings {
+        &self.setup
     }
 
     pub async fn serve_stdio(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -52,6 +60,7 @@ impl<P> Clone for PktctlServer<P> {
     fn clone(&self) -> Self {
         Self {
             packet_tracer: Arc::clone(&self.packet_tracer),
+            setup: Arc::clone(&self.setup),
             tool_router: self.tool_router.clone(),
         }
     }

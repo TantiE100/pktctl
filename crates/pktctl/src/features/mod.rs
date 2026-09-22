@@ -6,5 +6,6 @@ pub mod hosts;
 pub mod links;
 pub mod modules;
 pub mod paths;
+pub mod setup;
 pub mod status;
 pub mod workspace;

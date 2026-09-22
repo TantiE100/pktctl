@@ -12,6 +12,7 @@ there is no extension window to keep open and no polling bridge in between.
 
 | Tool | What it does |
 |---|---|
+| `setup_exapp` | Creates the one-time Packet Tracer registration file for pktctl. |
 | `status` | Is Packet Tracer reachable? Version, device and link counts, or what to fix. |
 | `list_devices` | Every device with its name, model, kind and position. |
 | `add_device`, `rename_device`, `move_device`, `remove_device` | Build and reshape the topology. |
@@ -27,10 +28,9 @@ there is no extension window to keep open and no polling bridge in between.
 
 ## Quick start
 
-1. Register pktctl as an ExApp in Packet Tracer once:
-   [docs/features/exapp-registration.md](docs/features/exapp-registration.md).
-2. Build: `make release`.
-3. Add it to your MCP client:
+1. Build: `make release`.
+2. Pick an app id and a random secret (`openssl rand -hex 24`) and add pktctl to
+   your MCP client:
 
 ```json
 {
@@ -39,12 +39,16 @@ there is no extension window to keep open and no polling bridge in between.
       "command": "/path/to/pktctl/target/release/pktctl",
       "env": {
         "PKTCTL_APP_ID": "dev.pktctl",
-        "PKTCTL_SECRET": "the KEY from your registration"
+        "PKTCTL_SECRET": "your random secret"
       }
     }
   }
 }
 ```
+
+3. Ask the agent to run `setup_exapp`, then register the `.pta` it creates in
+   Packet Tracer once (**Extensions → IPC → Configure Apps → Add**). Details in
+   [docs/features/exapp-registration.md](docs/features/exapp-registration.md).
 
 ## Documentation
 

@@ -14,7 +14,8 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 25] = [
+const TOOLS: [&str; 26] = [
+    "setup_exapp",
     "add_note",
     "list_notes",
     "new_network",
@@ -56,10 +57,15 @@ impl McpClient {
     }
 
     async fn spawn_as(addr: &str, app_id: &str, secret: &str) -> Self {
+        Self::spawn_with(addr, app_id, secret, &[]).await
+    }
+
+    async fn spawn_with(addr: &str, app_id: &str, secret: &str, extra: &[(&str, &str)]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_pktctl"))
             .env("PKTCTL_ADDR", addr)
             .env("PKTCTL_APP_ID", app_id)
             .env("PKTCTL_SECRET", secret)
+            .envs(extra.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -514,6 +520,43 @@ async fn saves_reopens_and_captures_the_workspace_end_to_end() {
             .len(),
         1
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn setup_exapp_builds_the_registration_file_before_packet_tracer_accepts_us() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!("pktctl-e2e-setup-{}", std::process::id()));
+    let extensions = root.join("pt/extensions");
+    std::fs::create_dir_all(&extensions).unwrap();
+    let meta = extensions.join("meta");
+    std::fs::write(&meta, "#!/bin/sh\ncp \"$2\" \"$1\"\n").unwrap();
+    std::fs::set_permissions(&meta, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let output = root.join("out");
+    let (pt_home, out) = (
+        root.join("pt").display().to_string(),
+        output.display().to_string(),
+    );
+
+    let mut client = McpClient::spawn_with(
+        "127.0.0.1:1",
+        APP_ID,
+        SECRET,
+        &[("PKTCTL_PT_HOME", &pt_home), ("PKTCTL_SETUP_DIR", &out)],
+    )
+    .await;
+    let result = client.call_tool("setup_exapp", json!({})).await;
+    let pta = output.join("pktctl.pta");
+    assert_eq!(
+        result["structuredContent"]["pta"],
+        pta.display().to_string()
+    );
+    let contents = std::fs::read_to_string(&pta).unwrap();
+    assert!(contents.contains(&format!("<ID>{APP_ID}</ID>")));
+    assert!(contents.contains(&format!("<KEY>{SECRET}</KEY>")));
+    assert!(!output.join("pktctl-exapp.xml").exists());
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]

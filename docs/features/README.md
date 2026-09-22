@@ -15,7 +15,7 @@ its logic, its MCP adapter, its tests and a README.
 | Hosts | `configure_host` | [features/hosts](../../crates/pktctl/src/features/hosts/README.md) |
 | Host console | `run_host_command` | [features/host_console](../../crates/pktctl/src/features/host_console/README.md) |
 
-Setup that is not a tool:
+| Setup | `setup_exapp` | [features/setup](../../crates/pktctl/src/features/setup/README.md) |
 
-- [ExApp registration](exapp-registration.md): one-time step that lets pktctl
-  authenticate with Packet Tracer.
+The whole registration story, including the manual path, is in
+[ExApp registration](exapp-registration.md).
