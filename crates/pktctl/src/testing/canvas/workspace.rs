@@ -3,6 +3,7 @@ use ptmp::{Step, TypeCode, Value};
 use super::{
     CanvasNote, Device, Endpoint, Link, Network, State,
     models::MODELS,
+    physical,
     remote::{Remote, check_args, number, qstring_arg},
 };
 
@@ -18,6 +19,19 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
     let methods: Vec<&str> = steps.iter().map(|step| step.method.as_str()).collect();
     match methods.as_slice() {
         ["getActiveWorkspace", "getLogicalWorkspace", _] => logical(state, &steps[2]),
+        ["getActiveWorkspace", "getRootPhysicalObject", ..] => {
+            physical::object(state, 0, &steps[2..])
+        }
+        ["getPhysicalToolbar", ..] => physical::toolbar(state, &steps[1..]),
+        ["getPLSwitch", mode] => {
+            match *mode {
+                "showPhysicalMode" => state.physical_mode = true,
+                "showLogicalMode" => state.physical_mode = false,
+                other => return Err(Remote::unknown_method("PLSwitch", other)),
+            }
+            Ok(Value::Void)
+        }
+        ["isPhysicalMode"] => Ok(Value::Bool(state.physical_mode)),
         ["getActiveFile", "getSavedFilename"] => Ok(Value::qstring(&state.current_file)),
         ["fileSaveAsNoPrompt"] => {
             check_args(&steps[0], APP_WINDOW, &[TypeCode::QString, TypeCode::Bool])?;
@@ -71,6 +85,9 @@ fn logical(state: &mut State, step: &Step) -> Result<Value, Remote> {
         "removeDevice" => {
             let name = qstring_arg(step, WORKSPACE)?.to_owned();
             let before = state.devices.len();
+            if let Some(device) = state.devices.iter().find(|device| device.name == name) {
+                state.physical.remove_device(&device.physical_name);
+            }
             state.devices.retain(|device| device.name != name);
             state
                 .links
@@ -211,6 +228,7 @@ fn add_device(state: &mut State, step: &Step) -> Result<Value, Remote> {
         number(&step.args[2]),
         number(&step.args[3]),
     ));
+    state.physical.place_device(&name, model.class != "Pc");
     Ok(Value::qstring(name))
 }
 

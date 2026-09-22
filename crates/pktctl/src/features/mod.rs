@@ -7,6 +7,7 @@ pub mod ipc;
 pub mod links;
 pub mod modules;
 pub mod paths;
+pub mod physical;
 pub mod setup;
 pub mod status;
 pub(crate) mod terminal;
