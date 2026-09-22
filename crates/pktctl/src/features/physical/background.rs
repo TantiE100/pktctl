@@ -105,6 +105,7 @@ fn resolve(image: &str) -> Result<String, PtError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::absolute;
 
     #[test]
     fn accepts_bundled_names_and_absolute_paths() {
@@ -116,7 +117,8 @@ mod tests {
             resolve(" CITY ").unwrap(),
             "../art/Background/gGeoViewCity.png"
         );
-        assert_eq!(resolve("/tmp/plano.png").unwrap(), "/tmp/plano.png");
+        let plan = absolute("/tmp/plano.png");
+        assert_eq!(resolve(&plan).unwrap(), plan);
         assert_eq!(resolve("").unwrap(), "");
         let error = resolve("plano.png").unwrap_err().to_string();
         assert!(error.contains("absolute path"), "{error}");
