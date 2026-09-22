@@ -13,7 +13,9 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 26] = [
+const TOOLS: [&str; 28] = [
+    "call_ipc",
+    "describe_ipc",
     "setup_exapp",
     "add_note",
     "list_notes",
@@ -464,6 +466,55 @@ async fn setup_exapp_builds_the_registration_file_before_packet_tracer_accepts_u
     assert!(contents.contains(&format!("<KEY>{SECRET}</KEY>")));
     assert!(!output.join("pktctl-exapp.xml").exists());
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn call_ipc_reaches_any_method_end_to_end() {
+    let (_canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
+    let power = client
+        .call_tool(
+            "call_ipc",
+            json!({
+                "from": "network",
+                "steps": [
+                    { "method": "getDevice", "args": ["R1"] },
+                    { "method": "getPower" }
+                ]
+            }),
+        )
+        .await;
+    assert_eq!(
+        power["structuredContent"],
+        json!({ "call": "network.getDevice(\"R1\").getPower()", "returns": "bool", "value": true })
+    );
+
+    let typo = client
+        .call_tool(
+            "call_ipc",
+            json!({ "from": "network", "steps": [{ "method": "getDevise", "args": ["R1"] }] }),
+        )
+        .await;
+    assert_eq!(typo["isError"], true);
+    assert!(
+        typo["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("did you mean getDevice")
+    );
+
+    let described = client
+        .call_tool("describe_ipc", json!({ "class": "Network" }))
+        .await;
+    assert!(
+        described["structuredContent"]["methods"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|method| method["signature"] == "getDevice(deviceName: string) -> Device")
+    );
 }
 
 #[tokio::test]

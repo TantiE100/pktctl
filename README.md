@@ -25,6 +25,11 @@ there is no extension window to keep open and no polling bridge in between.
 | `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
 | `screenshot`, `add_note`, `list_notes`, `remove_note` | See the canvas and annotate it. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
+| `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
+
+Dedicated tools cover everyday work; `call_ipc` reaches everything else.
+[docs/coverage.md](docs/coverage.md) tracks which Packet Tracer areas have a
+dedicated tool and how each one was validated.
 
 ## Quick start
 

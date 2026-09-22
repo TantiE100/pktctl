@@ -1,3 +1,4 @@
+pub mod api;
 mod command;
 pub mod kinds;
 mod live;

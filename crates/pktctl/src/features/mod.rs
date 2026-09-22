@@ -3,6 +3,7 @@ pub mod cli;
 pub mod devices;
 pub mod host_console;
 pub mod hosts;
+pub mod ipc;
 pub mod links;
 pub mod modules;
 pub mod paths;

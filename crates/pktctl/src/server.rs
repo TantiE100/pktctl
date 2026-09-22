@@ -35,7 +35,8 @@ impl<P: PacketTracer> PktctlServer<P> {
                 + Self::hosts_router()
                 + Self::modules_router()
                 + Self::workspace_router()
-                + Self::setup_router(),
+                + Self::setup_router()
+                + Self::ipc_router(),
         }
     }
 

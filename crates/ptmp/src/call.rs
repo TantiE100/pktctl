@@ -22,10 +22,14 @@ pub struct Call {
 
 impl Call {
     pub fn root(accessor: impl Into<String>) -> Self {
+        Self::root_with(accessor, [])
+    }
+
+    pub fn root_with(accessor: impl Into<String>, args: impl IntoIterator<Item = Value>) -> Self {
         Self {
             steps: vec![Step {
                 method: accessor.into(),
-                args: Vec::new(),
+                args: args.into_iter().collect(),
             }],
         }
     }

@@ -17,6 +17,7 @@ ptmp = { workspace = true }
 rmcp = { workspace = true }
 schemars = "1"
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-std", "process"] }
 tracing = { workspace = true }
