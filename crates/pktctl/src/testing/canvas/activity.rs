@@ -10,6 +10,7 @@ pub struct ActivityFixture {
     pub items: (u32, u32),
     pub connectivity: Vec<(String, bool)>,
     pub seconds_left: Option<i32>,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -17,11 +18,13 @@ pub(super) struct Activity {
     fixture: ActivityFixture,
     elapsed_ms: i32,
     tests_run: bool,
+    unlocked: bool,
 }
 
 impl Activity {
     pub(super) fn new(fixture: ActivityFixture) -> Self {
         Self {
+            unlocked: fixture.password.is_none(),
             fixture,
             elapsed_ms: 125_000,
             tests_run: false,
@@ -50,6 +53,31 @@ pub(super) fn handle(
         _ => {}
     }
     let activity = activity.ok_or_else(|| Remote::unknown_method("NetworkFile", &step.method))?;
+    match step.method.as_str() {
+        "isPasswordConfirmed" => {
+            return no_args(step, CLASS).map(|()| Value::Bool(activity.unlocked));
+        }
+        "confirmPassword" => {
+            check_args(step, CLASS, &[TypeCode::QString])?;
+            let given = step.args[0].as_str().unwrap_or_default();
+            activity.unlocked = activity
+                .fixture
+                .password
+                .as_deref()
+                .is_none_or(|password| password == given);
+            return Ok(Value::Bool(activity.unlocked));
+        }
+        "getInstructionCount" | "getInstruction" => {}
+        method if !activity.unlocked => {
+            return Err(Remote {
+                class: CLASS.into(),
+                message: format!(
+                    "Activity file requires password, call ipc.appWindow().getActiveFile().confirmPassword(passwordString) \"{method}\""
+                ),
+            });
+        }
+        _ => {}
+    }
     let (correct, total) = activity.fixture.items;
     let percent = if total == 0 {
         100.0
@@ -75,7 +103,6 @@ pub(super) fn handle(
         "getCountDownTime" | "getCountDownTimeLeft" => getter(Value::Int(
             activity.fixture.seconds_left.unwrap_or_default() * 1000,
         )),
-        "isPasswordConfirmed" => getter(Value::Bool(true)),
         "getInstruction" => {
             let index = int_arg(step, CLASS)?;
             usize::try_from(index)
