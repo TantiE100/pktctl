@@ -38,7 +38,8 @@ Validation levels:
 | Wireless: channels, radio bands, MAC filtering, WLC, cellular | none yet | ipc |
 | Server services: DHCP, DNS, HTTP/HTTPS, FTP, email, NTP, Syslog, TFTP | `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | live |
 | Server services: AAA (RADIUS/TACACS+), IoT server, NTP authentication, Syslog entries | none yet | ipc |
-| Preferences and workspace options | none yet | ipc |
+| Preferences | `get_preferences`, `set_preferences` | live |
+| Background images, recent files, custom hide options, buffer-full action | none yet | ipc |
 | Activity Wizard and assessment (`.pka`) | none yet | ipc |
 | Multiuser, IoT, programming environment | none yet | ipc |
 | IPC events (live notifications) | none yet | not reachable yet |

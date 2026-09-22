@@ -30,6 +30,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `set_power`, `fast_forward`, `power_cycle_all` | Power and Realtime time controls; `fast_forward` makes STP, DHCP and routing converge at once. |
 | `configure_access_point`, `connect_wireless`, `wireless_status` | Wi-Fi: SSID and WPA2/WPA/WEP on access points, clients that really associate. |
 | `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | Server services: DHCP pools, DNS records, web pages, FTP and email accounts, and every service switch. |
+| `get_preferences`, `set_preferences` | Packet Tracer's Preferences: labels, link lights, auto cabling, dialog tabs, toolbars and more. |
 | `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
 
 Dedicated tools cover everyday work; `call_ipc` reaches everything else.
