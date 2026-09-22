@@ -1,7 +1,9 @@
+use std::net::Ipv4Addr;
+
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Endpoint, State,
+    Endpoint, Port, State,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
 };
 
@@ -79,6 +81,16 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
         "getCenterYCoordinate" => getter().map(|()| Value::Double(state.devices[index].y)),
         "getPortCount" => getter().map(|()| count(state.devices[index].ports.len())),
         "skipBoot" if ios => getter().map(|()| Value::Void),
+        "setDhcpFlag" if !ios => {
+            check_args(step, class, &[TypeCode::Bool])?;
+            if step.args[0].as_bool() == Some(true) {
+                for port in &mut state.devices[index].ports {
+                    port.ip = Ipv4Addr::UNSPECIFIED;
+                    port.mask = Ipv4Addr::UNSPECIFIED;
+                }
+            }
+            Ok(Value::Void)
+        }
         "setName" => {
             let new_name = qstring_arg(step, class)?.to_owned();
             let old_name = std::mem::replace(&mut state.devices[index].name, new_name.clone());
@@ -101,17 +113,21 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
 
 fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<Value, Remote> {
     let device_name = state.devices[index].name.clone();
-    let Some(port) = state.devices[index]
+    let Some(position) = state.devices[index]
         .ports
         .iter()
-        .find(|port| port.name == name)
-        .cloned()
+        .position(|port| port.name == name)
     else {
         return Err(Remote::missing("Port"));
     };
+    let port = state.devices[index].ports[position].clone();
     let class = port.kind.class();
     let linked = state.link_at(&device_name, name).cloned();
     match steps {
+        [step] if port.kind.has_ip() && step.method.starts_with("set") => {
+            let port = &mut state.devices[index].ports[position];
+            set_address(port, step, class)
+        }
         [step] => {
             no_args(step, class)?;
             match step.method.as_str() {
@@ -119,6 +135,7 @@ fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<V
                 "isPortUp" | "isProtocolUp" => Ok(Value::Bool(linked.is_some())),
                 "getIpAddress" if port.kind.has_ip() => Ok(Value::Ip(port.ip)),
                 "getSubnetMask" if port.kind.has_ip() => Ok(Value::Ip(port.mask)),
+                "isDhcpClientOn" if port.kind.has_ip() => Ok(Value::Bool(port.dhcp)),
                 other => Err(Remote::unknown_method(class, other)),
             }
         }
@@ -130,6 +147,30 @@ fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<V
         [other, ..] => Err(Remote::unknown_method(class, &other.method)),
         [] => Err(Remote::unknown_method(class, "")),
     }
+}
+
+fn set_address(port: &mut Port, step: &Step, class: &str) -> Result<Value, Remote> {
+    match step.method.as_str() {
+        "setIpSubnetMask" => {
+            check_args(step, class, &[TypeCode::Ip, TypeCode::Ip])?;
+            port.ip = step.args[0].as_ip().unwrap_or(Ipv4Addr::UNSPECIFIED);
+            port.mask = step.args[1].as_ip().unwrap_or(Ipv4Addr::UNSPECIFIED);
+        }
+        "setDefaultGateway" => {
+            check_args(step, class, &[TypeCode::Ip])?;
+            port.gateway = step.args[0].as_ip().unwrap_or(Ipv4Addr::UNSPECIFIED);
+        }
+        "setDnsServerIp" => {
+            check_args(step, class, &[TypeCode::Ip])?;
+            port.dns = step.args[0].as_ip().unwrap_or(Ipv4Addr::UNSPECIFIED);
+        }
+        "setDhcpClientFlag" => {
+            check_args(step, class, &[TypeCode::Bool])?;
+            port.dhcp = step.args[0].as_bool().unwrap_or_default();
+        }
+        other => return Err(Remote::unknown_method(class, other)),
+    }
+    Ok(Value::Void)
 }
 
 fn link_call(

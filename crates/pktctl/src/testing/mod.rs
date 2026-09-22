@@ -4,4 +4,4 @@
 
 mod canvas;
 
-pub use canvas::{Canvas, LinkRecord, Remote};
+pub use canvas::{Canvas, HostAddressing, LinkRecord, Remote};
