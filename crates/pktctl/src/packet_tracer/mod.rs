@@ -37,7 +37,7 @@ pub trait PacketTracer: Send + Sync + 'static {
 pub enum PtError {
     #[error("Packet Tracer is not reachable ({0}); open Packet Tracer and retry")]
     Unreachable(String),
-    #[error("{0}; see docs/features/exapp-registration.md")]
+    #[error("{0}; call the setup_exapp tool to create the registration file")]
     NotRegistered(String),
     #[error("Packet Tracer rejected the request: {0}")]
     Rejected(String),

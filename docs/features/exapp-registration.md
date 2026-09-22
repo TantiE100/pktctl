@@ -4,6 +4,22 @@ Packet Tracer only accepts PTMP connections from registered external
 applications (ExApps). Registration is a one-time step per Packet Tracer
 installation and survives restarts.
 
+## The short way: `setup_exapp`
+
+1. Configure pktctl with an app id and a random secret (step 1 below) and add
+   it to your MCP client.
+2. Ask the agent to call `setup_exapp`. pktctl renders the template below with
+   your id and secret, runs Packet Tracer's own `meta` tool on it, deletes the
+   plain XML and writes `~/.config/pktctl/pktctl.pta` (or `PKTCTL_SETUP_DIR`).
+3. In Packet Tracer: **Extensions → IPC → Configure Apps → Add**, pick that
+   `.pta`, then **Ok**.
+4. `status` now reports `connected: true`.
+
+`setup_exapp` finds `meta` in the usual install folders; set `PKTCTL_PT_HOME`
+to the Packet Tracer folder if it lives elsewhere.
+
+The manual steps below do the same by hand.
+
 ## 1. Pick an id and a secret
 
 - **App id**: any reverse-domain name, for example `dev.pktctl`.
@@ -63,6 +79,8 @@ In Packet Tracer: **Extensions → IPC → Configure Apps → Add**, pick
 | `PKTCTL_SECRET` | the `KEY` from the XML |
 | `PKTCTL_ADDR` | optional, defaults to `127.0.0.1:39000` |
 | `PKTCTL_CALL_TIMEOUT_SECS` | optional, defaults to 30 |
+| `PKTCTL_PT_HOME` | optional, Packet Tracer install folder for `setup_exapp` |
+| `PKTCTL_SETUP_DIR` | optional, where `setup_exapp` writes the `.pta` (default `~/.config/pktctl`) |
 
 Call the `status` tool: `connected: true` means everything works.
 
@@ -71,7 +89,8 @@ Call the `status` tool: `connected: true` means everything works.
 | `status.problem` | Cause |
 |---|---|
 | `Packet Tracer is not reachable` | Packet Tracer is closed, or IPC listens on another port (**Extensions → IPC → Options**). |
-| `rejected app id ...` | The ExApp is not registered, or `PKTCTL_SECRET` differs from the `KEY`. |
+| `rejected app id ...` | The ExApp is not registered, or `PKTCTL_SECRET` differs from the `KEY`. Run `setup_exapp` and register the file it creates. |
+| `does not have the necessary privilege` | The ExApp was registered with fewer privileges; register the current template again. |
 
 ## Security
 

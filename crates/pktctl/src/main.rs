@@ -23,7 +23,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let server = PktctlServer::new(LivePacketTracer::new(config.session));
+    let server = PktctlServer::new(LivePacketTracer::new(config.session), config.setup);
     match server.serve_stdio().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
