@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Build pktctl's IPC index from the Java framework shipped with Packet Tracer.
 
-Usage: generate.py <pt-cep-java-framework.jar> <output.json> [<javadoc.zip>]
+Usage: generate.py <pt-cep-java-framework.jar> <output.json> [<javadoc.zip>] [--with-summaries]
 
 Needs `javap` (any JDK). The index lists every IPC class, its methods with the
 exact PTMP type of each argument (read from the *Impl bytecode, not guessed)
 and every enum with its wire values. With the Javadoc zip that ships next to
-the jar it also records parameter names and each method's summary.
+the jar it also records each method's parameter names.
+
+The Javadoc prose belongs to Cisco, so the index that this repository ships
+carries no summaries. `--with-summaries` copies them in for a local index, which
+makes `describe_ipc` more informative; do not redistribute that one.
 """
 
 import html
@@ -299,7 +303,7 @@ def returns(java, interfaces, enums):
     return "java:" + base
 
 
-def main(jar, output, javadoc=None):
+def main(jar, output, javadoc=None, with_summaries=False):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         with zipfile.ZipFile(jar) as archive:
@@ -414,7 +418,7 @@ def main(jar, output, javadoc=None):
                 names, summary = docs.get((name, method, len(java_params)), ([], ""))
                 if len(names) == len(java_params) and names:
                     methods[-1]["names"] = names
-                if summary:
+                if summary and with_summaries:
                     methods[-1]["doc"] = summary
             index["classes"][name] = {"extends": info["extends"], "methods": methods}
 
@@ -441,4 +445,5 @@ def main(jar, output, javadoc=None):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    arguments = [argument for argument in sys.argv[1:] if argument != "--with-summaries"]
+    main(*arguments[:3], with_summaries="--with-summaries" in sys.argv[1:])
