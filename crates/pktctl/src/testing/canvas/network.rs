@@ -5,6 +5,7 @@ use ptmp::{Step, TypeCode, Value};
 use super::{
     Endpoint, Port, State,
     models::INITIAL_DIALOG,
+    modules,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
 };
 
@@ -60,6 +61,10 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
                 .clone();
             port(state, index, &name, rest)
         }
+        ("getRootModule", rest) => {
+            no_args(step, class)?;
+            modules::tree(&state.devices[index], rest)
+        }
         ("getCommandLine", rest) if state.devices[index].model().ios => {
             no_args(step, class)?;
             console(state, index, rest)
@@ -110,6 +115,33 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
         "getCenterYCoordinate" => getter().map(|()| Value::Double(state.devices[index].y)),
         "getPortCount" => getter().map(|()| count(state.devices[index].ports.len())),
         "skipBoot" if ios => getter().map(|()| Value::Void),
+        "getPower" => getter().map(|()| Value::Bool(state.devices[index].powered)),
+        "setPower" => {
+            check_args(step, class, &[TypeCode::Bool])?;
+            let device = &mut state.devices[index];
+            let on = step.args[0].as_bool().unwrap_or_default();
+            if on && !device.powered {
+                device
+                    .model()
+                    .first_prompt
+                    .clone_into(&mut device.console_prompt);
+            }
+            device.powered = on;
+            Ok(Value::Void)
+        }
+        "getSupportedModule" => getter().map(|()| modules::supported(&state.devices[index])),
+        "addModule" => modules::add(&mut state.devices[index], step),
+        "removeModule" => {
+            let removed = modules::remove(&mut state.devices[index], step)?;
+            let device = &state.devices[index];
+            state.links.retain(|link| {
+                link.ends.iter().all(|end| {
+                    end.device != device.name
+                        || device.ports.iter().any(|port| port.name == end.port)
+                })
+            });
+            Ok(removed)
+        }
         "enterCommand" if ios => {
             check_args(step, class, &[TypeCode::String, TypeCode::String])?;
             let command = step.args[0].as_str().unwrap_or_default().to_owned();

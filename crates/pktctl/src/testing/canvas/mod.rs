@@ -1,5 +1,6 @@
 mod catalog;
 mod models;
+mod modules;
 mod network;
 mod remote;
 mod workspace;
@@ -25,6 +26,20 @@ struct Port {
     dhcp: bool,
 }
 
+impl Port {
+    fn new(name: String, kind: PortKind) -> Self {
+        Self {
+            name,
+            kind,
+            ip: Ipv4Addr::UNSPECIFIED,
+            mask: Ipv4Addr::UNSPECIFIED,
+            gateway: Ipv4Addr::UNSPECIFIED,
+            dns: Ipv4Addr::UNSPECIFIED,
+            dhcp: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Device {
     name: String,
@@ -34,21 +49,15 @@ struct Device {
     ports: Vec<Port>,
     cli: Vec<(String, String)>,
     console_prompt: String,
+    powered: bool,
+    cards: Vec<Option<&'static str>>,
 }
 
 impl Device {
     fn new(model: &'static Model, name: String, x: f64, y: f64) -> Self {
         let ports = (model.ports)()
             .into_iter()
-            .map(|(name, kind)| Port {
-                name,
-                kind,
-                ip: Ipv4Addr::UNSPECIFIED,
-                mask: Ipv4Addr::UNSPECIFIED,
-                gateway: Ipv4Addr::UNSPECIFIED,
-                dns: Ipv4Addr::UNSPECIFIED,
-                dhcp: false,
-            })
+            .map(|(name, kind)| Port::new(name, kind))
             .collect();
         Self {
             name,
@@ -58,6 +67,8 @@ impl Device {
             ports,
             cli: Vec::new(),
             console_prompt: model.first_prompt.to_owned(),
+            powered: true,
+            cards: vec![None; model.card_slots],
         }
     }
 
@@ -157,6 +168,29 @@ impl Canvas {
             .iter()
             .find(|candidate| candidate.name == device)
             .map(|device| device.console_prompt.clone())
+    }
+
+    pub fn installed_cards(&self, device: &str) -> Vec<Option<String>> {
+        self.state()
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)
+            .map(|device| {
+                device
+                    .cards
+                    .iter()
+                    .map(|card| card.map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn is_powered(&self, device: &str) -> Option<bool> {
+        self.state()
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)
+            .map(|device| device.powered)
     }
 
     pub fn cli_history(&self, device: &str) -> Vec<(String, String)> {

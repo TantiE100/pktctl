@@ -29,6 +29,8 @@ pub(super) struct Model {
     pub(super) first_prompt: &'static str,
     pub(super) hostname: &'static str,
     pub(super) ports: fn() -> Vec<(String, PortKind)>,
+    pub(super) card_slots: usize,
+    pub(super) supported_modules: &'static [&'static str],
 }
 
 pub(super) const INITIAL_DIALOG: &str =
@@ -44,6 +46,8 @@ pub(super) const MODELS: &[Model] = &[
         prefix: "Router",
         ios: true,
         ports: router_ports,
+        card_slots: 4,
+        supported_modules: &["HWIC-2T"],
     },
     Model {
         name: "2960-24TT",
@@ -54,6 +58,8 @@ pub(super) const MODELS: &[Model] = &[
         prefix: "Switch",
         ios: true,
         ports: switch_ports,
+        card_slots: 0,
+        supported_modules: &[],
     },
     Model {
         name: "3560-24PS",
@@ -64,6 +70,8 @@ pub(super) const MODELS: &[Model] = &[
         prefix: "Multilayer Switch",
         ios: true,
         ports: switch_ports,
+        card_slots: 0,
+        supported_modules: &[],
     },
     Model {
         name: "PC-PT",
@@ -74,6 +82,8 @@ pub(super) const MODELS: &[Model] = &[
         prefix: "PC",
         ios: false,
         ports: host_ports,
+        card_slots: 0,
+        supported_modules: &[],
     },
     Model {
         name: "Server-PT",
@@ -84,10 +94,14 @@ pub(super) const MODELS: &[Model] = &[
         prefix: "Server",
         ios: false,
         ports: host_ports,
+        card_slots: 0,
+        supported_modules: &[],
     },
 ];
 
 pub(super) const MODULES: &[(&str, i32)] = &[("HWIC-2T", 2), ("NIM-2T", 2), ("NM-1FE-TX", 1)];
+pub(super) const INTERFACE_CARD: i32 = 2;
+pub(super) const NON_REMOVABLE_MODULE: i32 = 18;
 
 pub(super) fn model(name: &str) -> &'static Model {
     MODELS
