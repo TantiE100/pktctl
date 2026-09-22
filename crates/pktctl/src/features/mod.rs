@@ -9,6 +9,7 @@ pub mod modules;
 pub mod paths;
 pub mod physical;
 pub mod setup;
+pub mod simulation;
 pub mod status;
 pub(crate) mod terminal;
 pub mod workspace;

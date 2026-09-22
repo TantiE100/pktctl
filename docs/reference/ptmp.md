@@ -104,6 +104,7 @@ The reply is matched by call id, so many calls can be in flight at once.
 | 14 | pair **observed** | two typed values |
 | 15 | vector **observed** | element type, count, then `count` values without per-item codes |
 | 15 + 1 | byte list **observed** | `15 1 <count>` then `count` raw bytes, no terminators (for example a PNG screenshot) |
+| 16 | value object **observed** | class name on the wire (`FlowChartNode`, `ArpProcess`-style names may differ in case from the Java interface), then its fields, each as a typed value, with no count. The field layout is the sequence of `read*` calls in the class's `read(EncodedBuffer)` method; `ptmp::data::register` takes those counts |
 
 String and QString are the same text on the wire, but each method accepts
 exactly one of them. Sending `getPort 9 ...` instead of `getPort 8 ...` fails

@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path
 
 IPC_PREFIX = "com/cisco/pt/ipc/"
+RESPONSE_FACTORY = "com/cisco/pt/impl/IPCResponseFactory.class"
 ENCODERS = {
     "addBoolParameter": "bool",
     "addByteParameter": "byte",
@@ -179,6 +180,58 @@ def docs_from(zip_path):
     return docs
 
 
+READERS = {
+    "readBoolean": "bool", "readByte": "byte", "readIPCData": "data", "readDouble": "double",
+    "readFloat": "float", "readInt": "int", "readIPAddress": "ip", "readIPV6Address": "ipv6",
+    "readLong": "long", "readMACAddress": "mac", "readPair": "pair", "readShort": "short",
+    "readQString": "qstring", "readString": "string", "readUUID": "uuid", "readVector": "list",
+}
+
+
+def data_layouts(root, impls):
+    factory = javap(root, ["com.cisco.pt.impl.IPCResponseFactory"], "-c")
+    wire = {}
+    pending = None
+    for line in factory.splitlines():
+        name = re.search(r"ldc(?:_w)?\s+#\d+\s+// String (\w+)$", line)
+        if name:
+            pending = name.group(1)
+        created = re.search(r"new\s+#\d+\s+// class ([\w/$]+Impl)$", line)
+        if created and pending:
+            wire[created.group(1).replace("/", ".")] = pending
+            pending = None
+    layouts = {}
+    for block in split_blocks(javap(root, sorted(wire), "-c")):
+        declaration = next((DECLARATION.match(line) for line in block if DECLARATION.match(line)), None)
+        java_name = declaration.group(2)
+        interfaces = impls.get(java_name, [])
+        for (method, params, _), body in method_blocks(block):
+            if method != "read" or len(params) != 1:
+                continue
+            fields, backwards = [], False
+            for index, line in enumerate(body):
+                reader = re.search(r"Method (read\w+):", line)
+                if reader and reader.group(1) in READERS:
+                    name = None
+                    for follow in body[index + 1:index + 4]:
+                        stored = re.search(r"putfield\s+#\d+\s+// Field (\w+):", follow)
+                        if stored:
+                            name = stored.group(1)
+                            break
+                    fields.append({"name": name or f"field{len(fields)}", "kind": READERS[reader.group(1)]})
+                jump = re.search(r"^\s*(\d+): goto\s+(\d+)", line)
+                if jump and int(jump.group(2)) < int(jump.group(1)) and any(
+                    re.search(r"Method read\w+:", later) for later in body[index:]
+                ):
+                    backwards = True
+            layouts[wire[java_name]] = {
+                "interface": interfaces[0] if interfaces else short(java_name)[:-4],
+                "fields": fields,
+                **({"variable": True} if backwards else {}),
+            }
+    return layouts
+
+
 def returns(java, interfaces, enums):
     base = java.split("<")[0]
     if base in JAVA_RETURNS:
@@ -201,7 +254,7 @@ def main(jar, output, javadoc=None):
         root = Path(tmp)
         with zipfile.ZipFile(jar) as archive:
             names = [name for name in archive.namelist() if name.startswith(IPC_PREFIX) and name.endswith(".class")]
-            for name in names:
+            for name in names + [RESPONSE_FACTORY]:
                 archive.extract(name, root)
         classes = sorted(name[:-6].replace("/", ".") for name in names if "$" not in name)
 
@@ -286,7 +339,8 @@ def main(jar, output, javadoc=None):
                     wire.setdefault(target, {}).setdefault(method, []).append(found)
 
         docs = docs_from(javadoc)
-        index = {"classes": {}, "enums": dict(sorted(enums.items())), "roots": {}}
+        layouts = data_layouts(root, impls)
+        index = {"classes": {}, "enums": dict(sorted(enums.items())), "roots": {}, "data": dict(sorted(layouts.items()))}
         for name, info in sorted(interfaces.items()):
             methods = []
             overloads = {}
@@ -330,7 +384,8 @@ def main(jar, output, javadoc=None):
     unresolved = sum(1 for c in index["classes"].values() if c["remote"] for m in c["methods"] for p in m["params"] if p.startswith("?"))
     print(f"{len(index['classes'])} classes, {methods} methods, {len(index['enums'])} enums, "
           f"{len(index['roots'])} roots, {sum(c['remote'] for c in index['classes'].values())} remote classes, "
-          f"{unresolved} unresolved remote params", file=sys.stderr)
+          f"{unresolved} unresolved remote params, {len(index['data'])} data layouts "
+          f"({sum(1 for layout in index['data'].values() if layout.get('variable'))} variable)", file=sys.stderr)
 
 
 if __name__ == "__main__":

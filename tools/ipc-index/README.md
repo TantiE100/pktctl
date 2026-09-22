@@ -23,6 +23,7 @@ signatures that were verified against a live Packet Tracer.
 | `*Impl` bytecode | Wire method name (`getObjectUUID` is sent as `getObjectUuid`) and the `IPCCall.add*Parameter` sequence, the exact PTMP type of each argument. |
 | `IPCFactory` bytecode | The same for methods that return objects, which the implementations delegate to the factory and its `createMessage` builders. |
 | Enum static initialisers | Wire values (`ConnectType.ETHERNET_STRAIGHT = 8100`), which differ from ordinals. |
+| `IPCResponseFactory` and each value object's `read` method | Wire class names of value objects (PTMP type 16) and their field names and types, in order. |
 | Javadoc zip | Parameter names and each method's summary. |
 
 It prints a summary line. `0 unresolved remote params` means every argument of

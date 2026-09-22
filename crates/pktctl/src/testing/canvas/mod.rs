@@ -5,6 +5,7 @@ mod modules;
 mod network;
 mod physical;
 mod remote;
+mod simulation;
 mod workspace;
 
 use std::{
@@ -126,6 +127,7 @@ struct State {
     events: Vec<Event>,
     physical: physical::Physical,
     physical_mode: bool,
+    simulation: simulation::Simulation,
 }
 
 impl State {
@@ -304,6 +306,7 @@ impl Canvas {
             "network" => network::handle(&mut state, &steps[1..]),
             "appWindow" => workspace::handle(&mut state, &steps[1..]),
             "systemFileManager" => workspace::files(&state, &steps[1..]),
+            "simulation" => simulation::handle(&mut state, &steps[1..]),
             "getObjectByUuid" => {
                 let uuid = steps[0]
                     .args
