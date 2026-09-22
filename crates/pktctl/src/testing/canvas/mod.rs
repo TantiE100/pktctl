@@ -3,6 +3,7 @@ mod console;
 mod models;
 mod modules;
 mod network;
+mod options;
 mod physical;
 mod remote;
 mod services;
@@ -142,6 +143,7 @@ struct State {
     physical_mode: bool,
     simulation: simulation::Simulation,
     realtime_presses: Vec<String>,
+    options: std::collections::BTreeMap<&'static str, bool>,
 }
 
 impl State {
@@ -369,6 +371,7 @@ impl Canvas {
             "appWindow" => workspace::handle(&mut state, &steps[1..]),
             "systemFileManager" => workspace::files(&state, &steps[1..]),
             "simulation" => simulation::handle(&mut state, &steps[1..]),
+            "options" => options::handle(&mut state.options, &steps[1..]),
             "getObjectByUuid" => {
                 let uuid = steps[0]
                     .args

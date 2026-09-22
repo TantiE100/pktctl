@@ -629,3 +629,25 @@ async fn serves_dhcp_and_dns_to_a_pc() {
     );
     remove_leftovers(&mut client).await;
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn changes_preferences_and_restores_them() {
+    let mut client = live_client().await;
+    let before = ok(&mut client, "get_preferences", json!({})).await;
+    let lights = before["values"]["show_link_lights"].as_bool().unwrap();
+    let after = ok(
+        &mut client,
+        "set_preferences",
+        json!({ "values": { "show_link_lights": !lights } }),
+    )
+    .await;
+    assert_eq!(after["values"]["show_link_lights"], !lights);
+    let restored = ok(
+        &mut client,
+        "set_preferences",
+        json!({ "values": { "show_link_lights": lights } }),
+    )
+    .await;
+    assert_eq!(restored, before);
+}

@@ -13,7 +13,9 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 50] = [
+const TOOLS: [&str; 52] = [
+    "get_preferences",
+    "set_preferences",
     "add_server_user",
     "configure_dhcp_server",
     "configure_dns_server",
