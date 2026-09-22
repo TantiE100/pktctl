@@ -441,19 +441,20 @@ async fn installs_modules_end_to_end() {
 #[tokio::test]
 async fn saves_reopens_and_captures_the_workspace_end_to_end() {
     let (canvas, _pt, mut client) = client_with_canvas().await;
+    let lab = pktctl::testing::absolute("/labs/e2e.pkt");
     client
         .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
         .await;
     let saved = client
-        .call_tool("save_network", json!({ "path": "/labs/e2e.pkt" }))
+        .call_tool("save_network", json!({ "path": lab }))
         .await;
-    assert_eq!(saved["structuredContent"]["path"], "/labs/e2e.pkt");
+    assert_eq!(saved["structuredContent"]["path"], lab);
 
     client.call_tool("new_network", json!({})).await;
     assert!(canvas.device_names().is_empty());
 
     let opened = client
-        .call_tool("open_network", json!({ "path": "/labs/e2e.pkt" }))
+        .call_tool("open_network", json!({ "path": lab.clone() }))
         .await;
     assert_eq!(opened["structuredContent"]["devices"], 1);
 

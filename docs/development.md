@@ -89,7 +89,7 @@ libraries. On Debian and Ubuntu:
 
 ```bash
 sudo apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev \
-    libwayland-dev libxkbcommon-dev pkg-config
+    libwayland-dev libxkbcommon-dev libpipewire-0.3-dev pkg-config
 ```
 
 macOS and Windows need nothing extra.
