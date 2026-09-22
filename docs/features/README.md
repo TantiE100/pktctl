@@ -17,6 +17,7 @@ its logic, its MCP adapter, its tests and a README.
 | Physical | `list_locations`, `add_location`, `add_building`, `rename_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
 | Simulation | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | [features/simulation](../../crates/pktctl/src/features/simulation/README.md) |
 | Power | `set_power`, `fast_forward`, `power_cycle_all` | [features/power](../../crates/pktctl/src/features/power/README.md) |
+| Wireless | `configure_access_point`, `connect_wireless`, `wireless_status` | [features/wireless](../../crates/pktctl/src/features/wireless/README.md) |
 | IPC | `describe_ipc`, `call_ipc` | [features/ipc](../../crates/pktctl/src/features/ipc/README.md) |
 | Setup | `setup_exapp` | [features/setup](../../crates/pktctl/src/features/setup/README.md) |
 

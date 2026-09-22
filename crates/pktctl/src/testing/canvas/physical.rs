@@ -123,12 +123,12 @@ impl Physical {
         }
     }
 
-    pub(super) fn to_xml(&self) -> String {
+    pub(super) fn workspace_xml(&self) -> String {
         let root = (0..self.places.len())
             .find(|id| self.places[*id].parent.is_none())
             .unwrap_or_default();
         format!(
-            "<PACKETTRACER5><VERSION>9.0.1.0858</VERSION><PHYSICALWORKSPACE>{}</PHYSICALWORKSPACE></PACKETTRACER5>",
+            "<PHYSICALWORKSPACE>{}</PHYSICALWORKSPACE>",
             self.node_xml(root)
         )
     }

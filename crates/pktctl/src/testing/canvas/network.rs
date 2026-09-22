@@ -5,6 +5,7 @@ use ptmp::{Step, TypeCode, Value};
 use super::{
     Endpoint, Port, State, console, modules, physical,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
+    wireless,
 };
 
 pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote> {
@@ -58,6 +59,10 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
                 .name
                 .clone();
             port(state, index, &name, rest)
+        }
+        ("getProcess", rest) => {
+            let name = string_arg(step, class)?.to_owned();
+            wireless::process(state, index, &name, rest)
         }
         ("getPhysicalObject", rest) => {
             no_args(step, class)?;
@@ -196,6 +201,10 @@ fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<V
             no_args(step, class)?;
             match step.method.as_str() {
                 "getName" => Ok(Value::string(&port.name)),
+                "isWirelessPort" => Ok(Value::Bool(port.kind.is_radio())),
+                "getMacAddress" if port.kind.is_radio() => {
+                    Ok(Value::Mac(wireless::radio_mac(index)))
+                }
                 "isPortUp" | "isProtocolUp" => Ok(Value::Bool(linked.is_some())),
                 "getIpAddress" if port.kind.has_ip() => Ok(Value::Ip(port.ip)),
                 "getSubnetMask" if port.kind.has_ip() => Ok(Value::Ip(port.mask)),

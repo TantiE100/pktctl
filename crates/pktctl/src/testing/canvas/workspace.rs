@@ -5,7 +5,7 @@ use super::{
     models::MODELS,
     physical,
     remote::{Remote, check_args, no_args, number, qstring_arg},
-    simulation,
+    simulation, wireless,
 };
 
 const WORKSPACE: &str = "LogicalWorkspace";
@@ -51,7 +51,7 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
                 .parent()
                 .is_some_and(std::path::Path::is_dir)
             {
-                let file = pktfile::encode(&state.physical.to_xml()).expect("canvas XML encodes");
+                let file = pktfile::encode(&state.document()).expect("canvas XML encodes");
                 std::fs::write(&path, file).expect("canvas can write real files");
             }
             state.files.insert(path.clone(), snapshot);
@@ -68,13 +68,15 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             let path = qstring_arg(&steps[0], APP_WINDOW)?.to_owned();
             let on_disk = std::fs::read(&path)
                 .ok()
-                .map(|bytes| pktfile::decode(&bytes).and_then(|xml| pktfile::physical_nodes(&xml)));
+                .map(|bytes| pktfile::decode(&bytes));
             match (state.files.get(&path).cloned(), on_disk) {
                 (_, Some(Err(_))) => Ok(Value::Int(3)),
                 (Some(network), on_disk) => {
                     state.restore(network);
-                    if let Some(Ok(nodes)) = on_disk {
-                        state.physical = physical::Physical::from_nodes(&nodes);
+                    if let Some(Ok(xml)) = on_disk
+                        && state.load_document(&xml).is_err()
+                    {
+                        return Ok(Value::Int(3));
                     }
                     state.current_file = path;
                     Ok(Value::Int(0))
@@ -253,6 +255,7 @@ fn add_device(state: &mut State, step: &Step) -> Result<Value, Remote> {
         number(&step.args[3]),
     ));
     state.physical.place_device(&name, model.class != "Pc");
+    wireless::associate(state);
     Ok(Value::qstring(name))
 }
 

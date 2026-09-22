@@ -484,3 +484,72 @@ async fn follows_a_ping_in_simulation_mode() {
     ok(&mut client, "simulation_mode", json!({ "on": false })).await;
     remove_leftovers(&mut client).await;
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered, including FILE"]
+async fn joins_a_wpa2_network() {
+    let mut client = live_client().await;
+    let saved = std::env::temp_dir().join(format!("pktctl-wifi-{}.pkt", std::process::id()));
+    let saved = saved.display().to_string();
+    ok(
+        &mut client,
+        "new_network",
+        json!({ "save_current_to": saved }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "AccessPoint-PT", "name": "E2E-AP" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "Laptop-PT", "name": "E2E-LT" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "move_to_location",
+        json!({ "device": "E2E-AP", "into": "Home City/Corporate Office" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "remove_module",
+        json!({ "device": "E2E-LT", "slot": "0" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_module",
+        json!({ "device": "E2E-LT", "slot": "0", "module": "PT-LAPTOP-NM-1W" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "configure_access_point",
+        json!({ "device": "E2E-AP", "ssid": "GAMC", "security": "wpa2_psk", "key": "clave1234" }),
+    )
+    .await;
+    let join = |key: &str| {
+        json!({ "device": "E2E-LT", "ssid": "GAMC", "security": "wpa2_psk", "key": key,
+                "ip": "192.168.50.20", "mask": "255.255.255.0" })
+    };
+    let refused = ok(&mut client, "connect_wireless", join("incorrecta")).await;
+    assert_eq!(refused["associated"], false, "{refused}");
+    let joined = ok(&mut client, "connect_wireless", join("clave1234")).await;
+    assert_eq!(joined["associated"], true, "{joined}");
+    assert_eq!(joined["access_point"], "E2E-AP");
+    assert_eq!(joined["ip"], "192.168.50.20");
+    let status = ok(
+        &mut client,
+        "wireless_status",
+        json!({ "device": "E2E-LT" }),
+    )
+    .await;
+    assert_eq!(status["access_point"], "E2E-AP");
+    ok(&mut client, "open_network", json!({ "path": saved })).await;
+    std::fs::remove_file(saved).unwrap();
+}
