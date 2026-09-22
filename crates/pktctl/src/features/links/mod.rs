@@ -135,6 +135,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wireless_associations_are_not_cables() {
+        let (canvas, packet_tracer) = network().await;
+        connect(
+            &packet_tracer,
+            &cable("R1", "GigabitEthernet0/0", "SW1", "GigabitEthernet0/1"),
+        )
+        .await
+        .unwrap();
+        canvas.associate_wireless("PC1", "FastEthernet0");
+
+        let links = list_links(&packet_tracer).await.unwrap();
+        assert_eq!(links.links.len(), 1);
+        let ports = list_ports(&packet_tracer, "PC1").await.unwrap();
+        let radio = &ports.ports[0];
+        assert!(radio.wireless);
+        assert!(radio.connection.is_none());
+    }
+
+    #[tokio::test]
     async fn auto_cabling_picks_straight_between_layers() {
         let (canvas, packet_tracer) = network().await;
         let link = connect(
