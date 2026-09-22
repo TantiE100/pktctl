@@ -1,3 +1,4 @@
+mod activity;
 mod catalog;
 mod console;
 mod models;
@@ -19,6 +20,7 @@ use std::{
 
 use ptmp::{Call, Event, Value};
 
+pub use activity::ActivityFixture;
 use models::{Model, PortKind, model};
 pub use remote::Remote;
 
@@ -144,6 +146,8 @@ struct State {
     simulation: simulation::Simulation,
     realtime_presses: Vec<String>,
     options: std::collections::BTreeMap<&'static str, bool>,
+    activity: Option<activity::Activity>,
+    description: String,
 }
 
 impl State {
@@ -296,6 +300,12 @@ impl Canvas {
             ends: [end.clone(), end],
             cable: 8109,
         });
+    }
+
+    pub fn open_activity(&self, path: &str, fixture: ActivityFixture) {
+        let mut state = self.state();
+        state.activity = Some(activity::Activity::new(fixture));
+        path.clone_into(&mut state.current_file);
     }
 
     pub fn realtime_presses(&self) -> Vec<String> {

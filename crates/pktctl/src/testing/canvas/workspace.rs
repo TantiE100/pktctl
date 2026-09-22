@@ -1,7 +1,7 @@
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    CanvasNote, Device, Endpoint, Link, Network, State,
+    CanvasNote, Device, Endpoint, Link, Network, State, activity,
     models::MODELS,
     physical,
     remote::{Remote, check_args, no_args, number, qstring_arg},
@@ -43,6 +43,14 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
         }
         ["getUserCreatedPDU", "addSimplePdu"] => simulation::add_simple_pdu(state, &steps[1]),
         ["getActiveFile", "getSavedFilename"] => Ok(Value::qstring(&state.current_file)),
+        ["getActiveFile", _] => {
+            let State {
+                activity,
+                description,
+                ..
+            } = state;
+            activity::handle(activity.as_mut(), description, &steps[1])
+        }
         ["fileSaveAsNoPrompt"] => {
             check_args(&steps[0], APP_WINDOW, &[TypeCode::QString, TypeCode::Bool])?;
             let path = steps[0].args[0].as_str().unwrap_or_default().to_owned();
@@ -62,6 +70,7 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             check_args(&steps[0], APP_WINDOW, &[TypeCode::Bool])?;
             state.restore(Network::default());
             state.current_file.clear();
+            state.activity = None;
             Ok(Value::Bool(true))
         }
         ["fileOpen"] => {
