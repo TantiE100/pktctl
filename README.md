@@ -15,6 +15,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `status` | Is Packet Tracer reachable? Version, device and link counts, or what to fix. |
 | `list_devices` | Every device with its name, model, kind and position. |
 | `add_device`, `rename_device`, `move_device`, `remove_device` | Build and reshape the topology. |
+| `list_ports`, `list_links`, `connect`, `disconnect` | Inspect ports and cable devices together, with CCNA cable selection. |
 | `list_models` | Device and module models available in this Packet Tracer. |
 | `run_cli` | Runs one IOS command on a router or switch and returns the console output. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
