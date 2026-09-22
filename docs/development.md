@@ -81,6 +81,14 @@ Run a single test with `cargo test -p pktctl --test live -- --ignored <name>`.
 - Conventional commit messages, atomic commits.
 - Merge with `git merge --no-ff` so each branch stays visible in history.
 
+## Continuous integration
+
+`make check` is what CI runs. Both pipelines are kept in step:
+[.github/workflows/ci.yml](../.github/workflows/ci.yml) runs it on Linux, macOS
+and Windows plus a build on the MSRV (1.88), and
+[.gitlab-ci.yml](../.gitlab-ci.yml) runs the same jobs on Linux. The live suite
+is not in CI: it needs a running Packet Tracer.
+
 ## Releasing
 
 The three crates share one version, set in `[workspace.package]`.
