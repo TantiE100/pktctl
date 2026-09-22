@@ -259,6 +259,29 @@ def data_layouts(root, impls, classes):
     return layouts
 
 
+def event_catalog(root, classes):
+    registries = [name for name in classes if name.startswith("com.cisco.pt.ipc.events.") and name.endswith("EventRegistry")]
+    catalog = {}
+    for block in split_blocks(javap(root, registries, "-c")):
+        wire_class, events = None, []
+        for (method, params, _), body in method_blocks(block):
+            if method == "getClassName" and not params:
+                for line in body:
+                    name = re.search(r"ldc(?:_w)?\s+#\d+\s+// String (\w+)$", line)
+                    if name:
+                        wire_class = name.group(1)
+                        break
+            if method == "processEvent":
+                for index, line in enumerate(body):
+                    name = re.search(r"ldc(?:_w)?\s+#\d+\s+// String (\w+)$", line)
+                    if name and any("equalsIgnoreCase" in follow for follow in body[index + 1:index + 3]):
+                        if name.group(1) not in events:
+                            events.append(name.group(1))
+        if wire_class and events:
+            catalog[wire_class] = events
+    return dict(sorted(catalog.items()))
+
+
 def returns(java, interfaces, enums):
     base = java.split("<")[0]
     if base in JAVA_RETURNS:
@@ -367,7 +390,8 @@ def main(jar, output, javadoc=None):
 
         docs = docs_from(javadoc)
         layouts = data_layouts(root, impls, classes)
-        index = {"classes": {}, "enums": dict(sorted(enums.items())), "roots": {}, "data": dict(sorted(layouts.items()))}
+        index = {"classes": {}, "enums": dict(sorted(enums.items())), "roots": {}, "data": dict(sorted(layouts.items())),
+                 "events": event_catalog(root, classes)}
         for name, info in sorted(interfaces.items()):
             methods = []
             overloads = {}
@@ -412,7 +436,8 @@ def main(jar, output, javadoc=None):
     print(f"{len(index['classes'])} classes, {methods} methods, {len(index['enums'])} enums, "
           f"{len(index['roots'])} roots, {sum(c['remote'] for c in index['classes'].values())} remote classes, "
           f"{unresolved} unresolved remote params, {len(index['data'])} data layouts "
-          f"({sum(1 for layout in index['data'].values() if layout.get('variable'))} variable)", file=sys.stderr)
+          f"({sum(1 for layout in index['data'].values() if layout.get('variable'))} variable), "
+          f"{len(index['events'])} event classes with {sum(len(e) for e in index['events'].values())} events", file=sys.stderr)
 
 
 if __name__ == "__main__":

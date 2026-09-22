@@ -17,6 +17,8 @@ pub struct ApiIndex {
     pub roots: BTreeMap<String, String>,
     #[serde(default)]
     pub data: BTreeMap<String, DataLayout>,
+    #[serde(default)]
+    pub events: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +199,13 @@ impl ApiIndex {
                     .find(|(candidate, _)| candidate.eq_ignore_ascii_case(wire_name))
             })
             .map(|(name, _)| name.as_str())
+    }
+
+    pub fn event_class(&self, name: &str) -> Option<(&str, &[String])> {
+        self.events
+            .iter()
+            .find(|(class, _)| class.eq_ignore_ascii_case(name))
+            .map(|(class, events)| (class.as_str(), events.as_slice()))
     }
 
     pub fn is_remote(&self, name: &str) -> bool {

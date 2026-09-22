@@ -42,4 +42,4 @@ Validation levels:
 | Background images, recent files, custom hide options, buffer-full action | none yet | ipc |
 | Activity Wizard and assessment (`.pka`) | none yet | ipc |
 | Multiuser, IoT, programming environment | none yet | ipc |
-| IPC events (live notifications) | none yet | not reachable yet |
+| IPC events: 73 classes, 202 events | `watch_events` | live |

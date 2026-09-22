@@ -65,6 +65,10 @@ impl ScriptedPacketTracer {
         packet_tracer
     }
 
+    pub(crate) fn emit(&self, event: Event) {
+        self.emitter.emit(event);
+    }
+
     pub(crate) fn subscriptions(&self) -> Vec<Subscription> {
         self.subscriptions
             .lock()

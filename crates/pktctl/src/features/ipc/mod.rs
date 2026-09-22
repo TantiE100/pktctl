@@ -3,6 +3,7 @@ mod describe;
 
 use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 
+pub(crate) use call::plain;
 pub use call::{IpcCallRequest, IpcCallResult, IpcStep, call_ipc};
 pub use describe::{ClassInfo, DescribeRequest, Description, EnumInfo, MethodInfo, describe};
 

@@ -20,6 +20,10 @@ pub struct DescribeRequest {
     /// Show the values of one enum, for example `ConnectType`.
     #[serde(default, rename = "enum")]
     pub enum_name: Option<String>,
+    /// Show the events an object class raises, for example `LogicalWorkspace`, for
+    /// `watch_events`. An empty string lists every class that raises events.
+    #[serde(default)]
+    pub events: Option<String>,
     /// Maximum number of search results. Defaults to 40, maximum 200.
     #[serde(default)]
     pub limit: Option<usize>,
@@ -48,6 +52,12 @@ pub struct EnumInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct EventInfo {
+    pub class: String,
+    pub events: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Overview {
     pub roots: Vec<(String, String)>,
     pub classes: usize,
@@ -61,6 +71,9 @@ pub struct Overview {
 pub enum Description {
     Class(ClassInfo),
     Enum(EnumInfo),
+    Events {
+        event_classes: Vec<EventInfo>,
+    },
     Matches {
         matches: Vec<MethodInfo>,
         truncated: bool,
@@ -79,6 +92,9 @@ pub fn describe(request: &DescribeRequest) -> Result<Description, PtError> {
     };
     if let Some(name) = trimmed(&request.class) {
         return class_info(api, &name);
+    }
+    if let Some(name) = request.events.as_deref().map(str::trim) {
+        return event_info(api, name);
     }
     if let Some(name) = trimmed(&request.enum_name) {
         return enum_info(api, &name);
@@ -178,6 +194,27 @@ fn enum_info(api: &ApiIndex, name: &str) -> Result<Description, PtError> {
         name: name.clone(),
         values,
     }))
+}
+
+fn event_info(api: &ApiIndex, name: &str) -> Result<Description, PtError> {
+    let event_classes = if name.is_empty() {
+        api.events
+            .iter()
+            .map(|(class, events)| EventInfo {
+                class: class.clone(),
+                events: events.clone(),
+            })
+            .collect()
+    } else {
+        let (class, events) = api
+            .event_class(name)
+            .ok_or_else(|| PtError::NotFound(format!("event class `{name}`")))?;
+        vec![EventInfo {
+            class: class.to_owned(),
+            events: events.to_vec(),
+        }]
+    };
+    Ok(Description::Events { event_classes })
 }
 
 fn search(api: &ApiIndex, query: &str, limit: usize) -> Description {
@@ -331,6 +368,19 @@ mod tests {
             panic!("expected an enum");
         };
         assert_eq!(values.values[0], ("ETHERNET_STRAIGHT".into(), 8100));
+    }
+
+    #[test]
+    fn lists_the_events_of_a_class() {
+        let request = DescribeRequest {
+            events: Some("logicalworkspace".into()),
+            ..DescribeRequest::default()
+        };
+        let Description::Events { event_classes } = describe(&request).unwrap() else {
+            panic!("expected events");
+        };
+        assert_eq!(event_classes[0].class, "LogicalWorkspace");
+        assert!(event_classes[0].events.contains(&"deviceAdded".to_owned()));
     }
 
     #[test]

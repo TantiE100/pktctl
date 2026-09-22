@@ -651,3 +651,29 @@ async fn changes_preferences_and_restores_them() {
     .await;
     assert_eq!(restored, before);
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn watches_devices_being_added() {
+    let mut watcher = live_client().await;
+    let mut actor = live_client().await;
+    remove_leftovers(&mut actor).await;
+    let listen = ok(
+        &mut watcher,
+        "watch_events",
+        json!({ "class": "LogicalWorkspace", "events": ["deviceAdded"], "seconds": 6, "max_events": 1 }),
+    );
+    let act = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        ok(
+            &mut actor,
+            "add_device",
+            json!({ "model": "2911", "name": ROUTER }),
+        )
+        .await
+    };
+    let (seen, _) = tokio::join!(listen, act);
+    assert_eq!(seen["events"][0]["event"], "deviceAdded", "{seen}");
+    assert_eq!(seen["events"][0]["args"][1], "2911");
+    remove_leftovers(&mut actor).await;
+}

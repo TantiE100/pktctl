@@ -20,6 +20,7 @@ its logic, its MCP adapter, its tests and a README.
 | Wireless | `configure_access_point`, `connect_wireless`, `wireless_status` | [features/wireless](../../crates/pktctl/src/features/wireless/README.md) |
 | Services | `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | [features/services](../../crates/pktctl/src/features/services/README.md) |
 | Preferences | `get_preferences`, `set_preferences` | [features/preferences](../../crates/pktctl/src/features/preferences/README.md) |
+| Events | `watch_events` | [features/events](../../crates/pktctl/src/features/events/README.md) |
 | IPC | `describe_ipc`, `call_ipc` | [features/ipc](../../crates/pktctl/src/features/ipc/README.md) |
 | Setup | `setup_exapp` | [features/setup](../../crates/pktctl/src/features/setup/README.md) |
 
