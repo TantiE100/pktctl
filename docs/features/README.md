@@ -8,6 +8,7 @@ its logic, its MCP adapter, its tests and a README.
 | Status | `status` | [features/status](../../crates/pktctl/src/features/status/README.md) |
 | Devices | `list_devices` | [features/devices](../../crates/pktctl/src/features/devices/README.md) |
 | CLI | `run_cli` | [features/cli](../../crates/pktctl/src/features/cli/README.md) |
+| Host console | `run_host_command` | [features/host_console](../../crates/pktctl/src/features/host_console/README.md) |
 
 Setup that is not a tool:
 

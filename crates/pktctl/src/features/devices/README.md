@@ -16,6 +16,9 @@ Lists every device in the open network.
 }
 ```
 
+Packet Tracer counts infrastructure objects as devices too; a network with a
+rack always contains a `Power Distribution Device` of kind `Device`.
+
 `kind` is Packet Tracer's own class name. Switches report `CiscoDevice` and
 multilayer switches report `Router`, so use `model` when the distinction
 matters.

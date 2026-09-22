@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    packet_tracer::{PacketTracer, PtError, expect_integer, expect_text},
+    packet_tracer::{CommandStatus, PacketTracer, PtError, expect_integer, expect_text},
     server::PktctlServer,
 };
 
@@ -37,29 +37,6 @@ impl CliMode {
             Self::Global => "global",
             Self::Current => "",
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CommandStatus {
-    Ok,
-    Ambiguous,
-    Invalid,
-    Incomplete,
-    NotImplemented,
-}
-
-impl CommandStatus {
-    fn from_code(code: i64) -> Option<Self> {
-        Some(match code {
-            0 => Self::Ok,
-            1 => Self::Ambiguous,
-            2 => Self::Invalid,
-            3 => Self::Incomplete,
-            4 => Self::NotImplemented,
-            _ => return None,
-        })
     }
 }
 

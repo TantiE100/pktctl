@@ -1,7 +1,7 @@
 use std::{process::Stdio, time::Duration};
 
 use ptmp::{
-    Call, Credentials, Value,
+    Call, Credentials, Event, Value,
     fake::{FAKE_PT_VERSION, FakePt, Reply},
 };
 use serde_json::{Value as Json, json};
@@ -136,10 +136,42 @@ fn two_device_network(call: &Call) -> Reply {
                 Box::new(Value::string("Cisco IOS Software, C2900")),
             )
         }
+        ["network", "getDevice", "getCommandPrompt", "getObjectUuid"] => {
+            Value::Uuid("{pc1-terminal}".into())
+        }
+        ["network", "getDevice", "getCommandPrompt", "enterCommand"] => {
+            return Reply::WithEvents {
+                value: Value::Void,
+                events: vec![
+                    terminal_event(
+                        "outputWritten",
+                        vec![
+                            Value::string("Reply from 10.0.0.2: bytes=32 time<1ms TTL=128\n"),
+                            Value::Bool(false),
+                            Value::Int(0),
+                        ],
+                    ),
+                    terminal_event(
+                        "commandEnded",
+                        vec![Value::string("ping 10.0.0.2"), Value::Int(0)],
+                    ),
+                ],
+            };
+        }
         ["network", "getDevice", _] => return Reply::error("Device", "IPC Cache entry: "),
         _ => return Reply::error("Network", "IPC call not found"),
     };
     Reply::Value(value)
+}
+
+fn terminal_event(name: &str, args: Vec<Value>) -> Event {
+    Event {
+        token: "3".into(),
+        class: "TerminalLine".into(),
+        object_uuid: "{pc1-terminal}".into(),
+        name: name.into(),
+        args,
+    }
 }
 
 async fn client_with_network() -> (FakePt, McpClient) {
@@ -161,7 +193,10 @@ async fn advertises_every_feature_tool_with_schemas() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
     names.sort_unstable();
-    assert_eq!(names, ["list_devices", "run_cli", "status"]);
+    assert_eq!(
+        names,
+        ["list_devices", "run_cli", "run_host_command", "status"]
+    );
 
     let run_cli = tools["tools"]
         .as_array()
@@ -229,6 +264,39 @@ async fn tool_failures_come_back_as_tool_errors_the_agent_can_read() {
             .as_str()
             .unwrap()
             .contains("Device")
+    );
+}
+
+#[tokio::test]
+async fn run_host_command_streams_console_output_until_the_command_ends() {
+    let (pt, mut client) = client_with_network().await;
+    let result = client
+        .call_tool(
+            "run_host_command",
+            json!({ "device": "PC1", "command": "ping 10.0.0.2" }),
+        )
+        .await;
+    assert_eq!(
+        result["structuredContent"],
+        json!({
+            "finished": true,
+            "status": "ok",
+            "output": "Reply from 10.0.0.2: bytes=32 time<1ms TTL=128\n"
+        })
+    );
+    let subscribed: Vec<_> = pt
+        .subscriptions()
+        .into_iter()
+        .map(|subscription| (subscription.event, subscription.enabled))
+        .collect();
+    assert_eq!(
+        subscribed,
+        [
+            ("outputWritten".to_owned(), true),
+            ("commandEnded".to_owned(), true),
+            ("outputWritten".to_owned(), false),
+            ("commandEnded".to_owned(), false),
+        ]
     );
 }
 

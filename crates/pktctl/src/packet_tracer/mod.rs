@@ -1,17 +1,32 @@
+mod command;
 mod live;
 #[cfg(test)]
 pub(crate) mod scripted;
 
 use std::future::Future;
 
-use ptmp::{Call, Value};
+use ptmp::{Call, Event, Subscription, Value};
+use tokio::sync::broadcast;
 
+pub use command::CommandStatus;
 pub use live::LivePacketTracer;
+
+pub type Events = broadcast::Receiver<Event>;
 
 pub trait PacketTracer: Send + Sync + 'static {
     fn call(&self, call: Call) -> impl Future<Output = Result<Value, PtError>> + Send;
 
     fn version(&self) -> impl Future<Output = Result<String, PtError>> + Send;
+
+    fn subscribe(
+        &self,
+        subscription: Subscription,
+    ) -> impl Future<Output = Result<Events, PtError>> + Send;
+
+    fn unsubscribe(
+        &self,
+        subscription: Subscription,
+    ) -> impl Future<Output = Result<(), PtError>> + Send;
 }
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]

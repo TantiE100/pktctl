@@ -1,6 +1,7 @@
 //! In-process Packet Tracer stand-in that speaks real PTMP over TCP, for tests.
 
 use std::{
+    collections::HashSet,
     net::SocketAddr,
     sync::{Arc, Mutex, PoisonError},
 };
@@ -31,6 +32,7 @@ const CHALLENGE: &str = "fakeChallenge0123456789abcdefghi";
 pub enum Reply {
     Value(Value),
     Error { class: String, message: String },
+    WithEvents { value: Value, events: Vec<Event> },
     Silence,
 }
 
@@ -134,47 +136,73 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-async fn serve(stream: TcpStream, state: Arc<State>, mut events: broadcast::Receiver<Event>) {
+async fn serve(stream: TcpStream, state: Arc<State>, mut emitted: broadcast::Receiver<Event>) {
     let mut transport = Framed::new(stream, FrameCodec);
     if !authenticate(&mut transport, &state.credentials).await {
         return;
     }
 
+    let mut subscribed: HashSet<(String, String, String)> = HashSet::new();
     loop {
-        tokio::select! {
+        let outgoing = tokio::select! {
             frame = transport.next() => {
                 let Some(Ok(frame)) = frame else { return };
                 let Ok(message) = Message::from_frame(&frame) else { continue };
-                let reply = match message {
+                match message {
                     Message::IpcCall { id, call } => {
                         lock(&state.calls).push(call.clone());
-                        match (state.handler)(&call) {
-                            Reply::Value(value) => Some(Message::IpcResponse { id, value }),
-                            Reply::Error { class, message } => Some(Message::IpcError { id, class, message }),
-                            Reply::Silence => None,
-                        }
+                        answer(id, (state.handler)(&call))
                     }
                     Message::IpcSubscribe(subscription) => {
+                        let key = subscription_key(&subscription.class, &subscription.object_uuid, &subscription.event);
+                        if subscription.enabled {
+                            subscribed.insert(key);
+                        } else {
+                            subscribed.remove(&key);
+                        }
                         lock(&state.subscriptions).push(subscription);
-                        None
+                        Vec::new()
                     }
                     Message::Disconnect { .. } => return,
-                    _ => None,
-                };
-                if let Some(reply) = reply
-                    && send(&mut transport, &reply).await.is_err()
-                {
-                    return;
+                    _ => Vec::new(),
                 }
             }
-            event = events.recv() => {
+            event = emitted.recv() => {
                 let Ok(event) = event else { continue };
-                if send(&mut transport, &Message::IpcEvent(event)).await.is_err() {
-                    return;
-                }
+                vec![Message::IpcEvent(event)]
+            }
+        };
+
+        for message in outgoing {
+            if let Message::IpcEvent(event) = &message
+                && !subscribed.contains(&subscription_key(
+                    &event.class,
+                    &event.object_uuid,
+                    &event.name,
+                ))
+            {
+                continue;
+            }
+            if send(&mut transport, &message).await.is_err() {
+                return;
             }
         }
     }
+}
+
+fn answer(id: u32, reply: Reply) -> Vec<Message> {
+    match reply {
+        Reply::Value(value) => vec![Message::IpcResponse { id, value }],
+        Reply::Error { class, message } => vec![Message::IpcError { id, class, message }],
+        Reply::WithEvents { value, events } => std::iter::once(Message::IpcResponse { id, value })
+            .chain(events.into_iter().map(Message::IpcEvent))
+            .collect(),
+        Reply::Silence => Vec::new(),
+    }
+}
+
+fn subscription_key(class: &str, object_uuid: &str, event: &str) -> (String, String, String) {
+    (class.to_owned(), object_uuid.to_owned(), event.to_owned())
 }
 
 async fn authenticate(
