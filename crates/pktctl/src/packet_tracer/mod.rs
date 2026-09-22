@@ -1,4 +1,5 @@
 mod command;
+pub mod kinds;
 mod live;
 #[cfg(test)]
 pub(crate) mod scripted;
