@@ -11,6 +11,7 @@ MCP over stdio and talks to Packet Tracer through [`ptmp`](../ptmp/README.md).
 | `packet_tracer` | The domain port: `PacketTracer` trait (calls, version, event subscriptions), `LivePacketTracer`, `PtError`, `CommandStatus`. |
 | `features` | One folder per tool; see [docs/features](../../docs/features/README.md). |
 | `server` | `PktctlServer`: composes the feature routers and serves stdio. |
+| `testing` | `Canvas` (feature `testing`): an in-memory Packet Tracer that answers IPC calls with the real reply types, argument checks and error texts. Unit tests and the MCP E2E tests run on it. |
 
 ## Configuration
 
