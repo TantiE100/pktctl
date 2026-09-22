@@ -35,13 +35,20 @@ The Command Prompt does not return its output from the call that types the
 command. Output arrives as events, so the tool:
 
 1. Resolves the terminal: `network().getDevice(device).getCommandPrompt().getObjectUuid()`.
-2. Subscribes to `TerminalLine` events `outputWritten` and `commandEnded` for
-   that uuid. The event receiver is created before the subscription is sent,
-   so no output can be missed.
+2. Subscribes to `TerminalLine` events `outputWritten`, `moreDisplayed` and
+   `commandEnded` for that uuid. The event receiver is created before the
+   subscription is sent, so no output can be missed; synchronous commands such
+   as `ipconfig` emit all their output before `enterCommand` even returns.
 3. Types the command: `...getCommandPrompt().enterCommand(command: string)`.
 4. Appends every `outputWritten` text until `commandEnded`, whose second
-   argument is the command status.
+   argument is the command status. Long output such as `ipconfig /all` stops
+   at a `--More--` prompt and raises `moreDisplayed`; the tool answers with a
+   space, `enterChar(32: byte, 0: int)`, exactly like pressing the key, so the
+   agent always receives the whole output and the console is left at `C:\>`.
 5. Unsubscribes (same subscription with `false`).
 
 Events for other terminals are ignored, so two agents can use different PCs at
 the same time.
+
+A command still running when `timeout_secs` elapses (for example `ping -t`)
+keeps the console busy; later commands on that PC wait behind it.

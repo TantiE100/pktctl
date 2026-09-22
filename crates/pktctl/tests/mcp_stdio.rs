@@ -473,7 +473,7 @@ async fn run_host_command_streams_console_output_until_the_command_ends() {
             .into_iter()
             .map(|subscription| (subscription.event, subscription.enabled))
             .collect();
-        (subscribed.len() == 4).then_some(subscribed)
+        (subscribed.len() == 6).then_some(subscribed)
     })
     .await;
     assert_eq!(
@@ -481,8 +481,10 @@ async fn run_host_command_streams_console_output_until_the_command_ends() {
         [
             ("outputWritten".to_owned(), true),
             ("commandEnded".to_owned(), true),
+            ("moreDisplayed".to_owned(), true),
             ("outputWritten".to_owned(), false),
             ("commandEnded".to_owned(), false),
+            ("moreDisplayed".to_owned(), false),
         ]
     );
 }
