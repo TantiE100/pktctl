@@ -13,6 +13,7 @@ const X: &[u8] = b"X";
 const Y: &[u8] = b"Y";
 const CHILDREN: &[u8] = b"CHILDREN";
 const BUILDING: i64 = 2;
+const DEVICE: i64 = 6;
 const TEMPLATE_FILE: &[u8] = include_bytes!("../assets/empty-9.0.1.pkt");
 
 /// One `<NODE>` of the physical workspace, located by byte ranges in the XML.
@@ -244,6 +245,37 @@ pub fn rename_node(xml: &str, uuid: &str, name: &str) -> Result<String, PktError
     Ok(edited)
 }
 
+/// Removes the node `uuid` with everything inside it. Refuses Intercity and any
+/// location that still holds a device, since devices also live in the logical topology.
+pub fn remove_node(xml: &str, uuid: &str) -> Result<String, PktError> {
+    let nodes = physical_nodes(xml)?;
+    let node = find(&nodes, uuid)?;
+    if node.parent.is_none() {
+        return Err(PktError::NodeInUse(
+            node.name.clone(),
+            "it is the root of the physical workspace".into(),
+        ));
+    }
+    let devices: Vec<&str> = nodes
+        .iter()
+        .filter(|inner| {
+            inner.kind == DEVICE
+                && node.element.start <= inner.element.start
+                && inner.element.end <= node.element.end
+        })
+        .map(|inner| inner.name.as_str())
+        .collect();
+    if !devices.is_empty() {
+        return Err(PktError::NodeInUse(
+            node.name.clone(),
+            format!("it still holds {}", devices.join(", ")),
+        ));
+    }
+    let mut edited = xml.to_owned();
+    edited.replace_range(node.element.clone(), "");
+    Ok(edited)
+}
+
 /// Adds an empty building inside the node `parent_uuid`; returns the new XML and the building's uuid.
 pub fn add_building(
     xml: &str,
@@ -363,6 +395,54 @@ mod tests {
         );
         assert_eq!(nodes.len(), 5);
         assert!(crate::decode(&crate::encode(&edited).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn removes_a_location_with_its_empty_children() {
+        let xml = empty_network();
+        let nodes = physical_nodes(&xml).unwrap();
+        let office = nodes[1].uuid.clone();
+        let edited = remove_node(&xml, &office).unwrap();
+        let names: Vec<String> = physical_nodes(&edited)
+            .unwrap()
+            .into_iter()
+            .map(|node| node.name)
+            .collect();
+        assert_eq!(names, ["Home City", "Intercity"]);
+        assert!(crate::decode(&crate::encode(&edited).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn keeps_intercity_and_locations_holding_devices() {
+        let xml = empty_network();
+        let nodes = physical_nodes(&xml).unwrap();
+        let root = nodes[3].uuid.clone();
+        assert!(matches!(
+            remove_node(&xml, &root),
+            Err(PktError::NodeInUse(name, _)) if name == "Intercity"
+        ));
+
+        let city = nodes[2].uuid.clone();
+        let (with_building, building) = add_building(&xml, &city, "Anexo", (10, 10)).unwrap();
+        let device = "<NODE><X>1</X><Y>1</Y><TYPE>6</TYPE><NAME>R1</NAME><CHILDREN/>\
+                      <UUID_STR>{device}</UUID_STR></NODE>";
+        let anexo = physical_nodes(&with_building)
+            .unwrap()
+            .into_iter()
+            .find(|node| node.uuid == building)
+            .unwrap();
+        let Children::Open { close_tag, .. } = anexo.children else {
+            panic!("a new building has open children");
+        };
+        let mut occupied = with_building.clone();
+        occupied.insert_str(close_tag, device);
+        assert_eq!(
+            remove_node(&occupied, &building),
+            Err(PktError::NodeInUse(
+                "Anexo".into(),
+                "it still holds R1".into()
+            ))
+        );
     }
 
     #[test]

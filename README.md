@@ -25,7 +25,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
 | `screenshot`, `add_note`, `list_notes`, `remove_note` | See the canvas and annotate it. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
-| `list_locations`, `add_location`, `add_building`, `rename_location`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
+| `list_locations`, `add_location`, `add_building`, `rename_location`, `remove_location`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
 | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | Simulation mode with the per-hop event list and Packet Tracer's own explanations. |
 | `set_power`, `fast_forward`, `power_cycle_all` | Power and Realtime time controls; `fast_forward` makes STP, DHCP and routing converge at once. |
 | `configure_access_point`, `connect_wireless`, `wireless_status` | Wi-Fi: SSID and WPA2/WPA/WEP on access points, clients that really associate. |

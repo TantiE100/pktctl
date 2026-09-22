@@ -7,7 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use file_edit::{
-    AddBuildingRequest, FileEdit, RenameLocationRequest, add_building, rename_location,
+    AddBuildingRequest, FileEdit, LocationRemoved, RemoveLocationRequest, RenameLocationRequest,
+    add_building, remove_location, rename_location,
 };
 pub use place::{
     AddLocationRequest, MoveRequest, Moved, NewLocation, add_location, move_to_location,
@@ -136,6 +137,29 @@ impl<P: PacketTracer> PktctlServer<P> {
         Parameters(request): Parameters<RenameLocationRequest>,
     ) -> Result<Json<FileEdit>, String> {
         rename_location(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "remove_location",
+        description = "Delete a city, building, wiring closet or rack with everything inside \
+                       it. Devices must be moved out first (move_to_location); the power units \
+                       Packet Tracer puts in racks go with it. Packet Tracer has no call for \
+                       this, so pktctl edits the network as bytes and opens the result as a \
+                       temporary copy; save with save_network and a path to keep the change.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn remove_location_tool(
+        &self,
+        Parameters(request): Parameters<RemoveLocationRequest>,
+    ) -> Result<Json<LocationRemoved>, String> {
+        remove_location(self.packet_tracer(), &request)
             .await
             .map(Json)
             .map_err(|error| error.to_string())
@@ -404,6 +428,28 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("shares its name"), "{error}");
+
+        let count = paths.len();
+        let refused = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::WiringCloset,
+                inside: Some("City#2".into()),
+                ..AddLocationRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.to_string().contains("shares its name"), "{refused}");
+        let after = list_locations(&packet_tracer)
+            .await
+            .unwrap()
+            .locations
+            .len();
+        assert_eq!(
+            after, count,
+            "nothing is created when the target is unreachable"
+        );
     }
 
     #[tokio::test]
@@ -529,6 +575,52 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(bad_name, PtError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn removes_only_locations_without_devices() {
+        let (_canvas, packet_tracer) = lab().await;
+        let remove = |path: &str| RemoveLocationRequest { path: path.into() };
+        let root = remove_location(&packet_tracer, &remove(""))
+            .await
+            .unwrap_err();
+        assert!(root.to_string().contains("Intercity"), "{root}");
+
+        let closet = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::WiringCloset,
+                inside: Some("Home City".into()),
+                ..AddLocationRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        move_to_location(&packet_tracer, &move_device("PC1", &closet.path))
+            .await
+            .unwrap();
+        let busy = remove_location(&packet_tracer, &remove(&closet.path))
+            .await
+            .unwrap_err();
+        assert!(busy.to_string().contains("PC1"), "{busy}");
+
+        move_to_location(&packet_tracer, &move_device("PC1", OFFICE))
+            .await
+            .unwrap();
+        let removed = remove_location(&packet_tracer, &remove(&closet.path))
+            .await
+            .unwrap();
+        assert_eq!(removed.removed, closet.path);
+        let paths: Vec<String> = list_locations(&packet_tracer)
+            .await
+            .unwrap()
+            .locations
+            .into_iter()
+            .map(|location| location.path)
+            .collect();
+        assert!(!paths.contains(&closet.path), "{paths:?}");
+        assert!(paths.iter().any(|path| path == MAIN_CLOSET));
+        std::fs::remove_file(removed.file).unwrap();
     }
 
     #[tokio::test]

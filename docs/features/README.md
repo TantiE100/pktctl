@@ -14,7 +14,7 @@ its logic, its MCP adapter, its tests and a README.
 | CLI | `run_cli`, `configure_ios` | [features/cli](../../crates/pktctl/src/features/cli/README.md) |
 | Hosts | `configure_host` | [features/hosts](../../crates/pktctl/src/features/hosts/README.md) |
 | Host console | `run_host_command` | [features/host_console](../../crates/pktctl/src/features/host_console/README.md) |
-| Physical | `list_locations`, `add_location`, `add_building`, `rename_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
+| Physical | `list_locations`, `add_location`, `add_building`, `rename_location`, `remove_location`, `move_to_location`, `show_workspace` | [features/physical](../../crates/pktctl/src/features/physical/README.md) |
 | Simulation | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | [features/simulation](../../crates/pktctl/src/features/simulation/README.md) |
 | Power | `set_power`, `fast_forward`, `power_cycle_all` | [features/power](../../crates/pktctl/src/features/power/README.md) |
 | Wireless | `configure_access_point`, `connect_wireless`, `wireless_status` | [features/wireless](../../crates/pktctl/src/features/wireless/README.md) |

@@ -12,6 +12,7 @@ where each device sits.
 | `move_to_location` | Moves a device or a whole location to another location, optionally to an `x`/`y` inside it. |
 | `rename_location` | Renames any location, including `City#2`-style duplicates. |
 | `add_building` | Creates a named building inside a city. |
+| `remove_location` | Deletes a city, building, closet or rack with everything inside. Devices must be moved out first; the Power Distribution Devices Packet Tracer puts in racks are removed with it. |
 | `show_workspace` | Switches the main window between the logical and the physical workspace. |
 
 ### Paths
@@ -56,7 +57,7 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
 
 ## Editing the network file
 
-`rename_location` and `add_building` do what the IPC API cannot by editing the
+`rename_location`, `add_building` and `remove_location` do what the IPC API cannot by editing the
 network with the [pktfile](../../../../pktfile/README.md) crate:
 
 1. Take the open network as `.pkt` bytes with `AppWindow.fileSaveToBytes`.
