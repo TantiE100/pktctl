@@ -261,3 +261,53 @@ async fn files_round_trip_without_dialogs() {
     assert!(restored["devices"].as_u64().is_some(), "{restored}");
     std::fs::remove_dir_all(scratch).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn call_ipc_reaches_the_raw_api() {
+    let mut client = live_client().await;
+    let version = ok(
+        &mut client,
+        "call_ipc",
+        json!({ "from": "appWindow", "steps": [{ "method": "getVersion" }] }),
+    )
+    .await;
+    assert!(version["value"].as_str().unwrap().starts_with('9'));
+
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2911", "name": ROUTER }),
+    )
+    .await;
+    let router = ok(
+        &mut client,
+        "call_ipc",
+        json!({ "from": "network", "steps": [{ "method": "getDevice", "args": [ROUTER] }] }),
+    )
+    .await;
+    assert_eq!(router["value"]["class"], "Router", "{router}");
+
+    let users = ok(
+        &mut client,
+        "call_ipc",
+        json!({
+            "from": router["value"]["uuid"],
+            "steps": [{ "method": "getUserPassCount" }]
+        }),
+    )
+    .await;
+    assert!(users["value"].as_i64().is_some(), "{users}");
+
+    let kind = ok(
+        &mut client,
+        "call_ipc",
+        json!({ "from": "network", "steps": [
+            { "method": "getDevice", "args": [ROUTER] },
+            { "method": "getType" }
+        ] }),
+    )
+    .await;
+    assert_eq!(kind["value"]["name"], "ROUTER", "{kind}");
+    remove_leftovers(&mut client).await;
+}
