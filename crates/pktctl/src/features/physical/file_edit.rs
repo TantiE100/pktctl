@@ -1,7 +1,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::tree::{Location, Snapshot};
+use super::{
+    place::Moved,
+    tree::{Location, Node, Snapshot},
+};
 use crate::{
     features::{
         devices::{list, remove},
@@ -10,7 +13,7 @@ use crate::{
     packet_tracer::{PacketTracer, PtError},
 };
 
-const DEFAULT_BUILDING_POSITION: (i32, i32) = (100, 100);
+pub(crate) const DEFAULT_POSITION: (i32, i32) = (100, 100);
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct RenameLocationRequest {
@@ -18,19 +21,6 @@ pub struct RenameLocationRequest {
     pub path: String,
     /// New name, for example `Edificio Central`.
     pub name: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
-pub struct AddBuildingRequest {
-    /// Path of the city the building goes in, for example `Home City`.
-    pub inside: String,
-    /// Name of the building, for example `Alcaldía`.
-    pub name: String,
-    /// Position inside the city. Defaults to 100, 100.
-    #[serde(default)]
-    pub x: Option<i32>,
-    #[serde(default)]
-    pub y: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
@@ -54,9 +44,11 @@ pub struct LocationRemoved {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct FileEdit {
     pub location: Location,
-    /// The temporary copy Packet Tracer now has open. Your own file is untouched: save
-    /// with `save_network` and a path to keep the change there.
-    pub file: String,
+    /// The temporary copy Packet Tracer now has open, when the change went through the
+    /// network file. Your own file is untouched: save with `save_network` and a path to
+    /// keep the change there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
 }
 
 pub async fn rename_location<P: PacketTracer>(
@@ -74,32 +66,22 @@ pub async fn rename_location<P: PacketTracer>(
     finish(packet_tracer, &id, file).await
 }
 
-pub async fn add_building<P: PacketTracer>(
+/// Writes a node Packet Tracer's API cannot create (a building or a piece of furniture)
+/// straight into the saved network.
+pub(crate) async fn add_node<P: PacketTracer>(
     packet_tracer: &P,
-    request: &AddBuildingRequest,
+    kind: i64,
+    inside: &str,
+    name: &str,
+    position: (i32, i32),
 ) -> Result<FileEdit, PtError> {
-    let name = checked_name(&request.name)?;
+    let name = checked_name(name)?;
     let snapshot = Snapshot::read(packet_tracer).await?;
-    let city = snapshot.by_path(&request.inside)?;
-    if city.kind != "city" {
-        return Err(PtError::InvalidInput(format!(
-            "buildings go inside a city, and `{}` is a {}",
-            city.name, city.kind
-        )));
-    }
-    let position = match (request.x, request.y) {
-        (Some(x), Some(y)) => (x, y),
-        (None, None) => DEFAULT_BUILDING_POSITION,
-        _ => {
-            return Err(PtError::InvalidInput(
-                "give both x and y, or neither".into(),
-            ));
-        }
-    };
-    let city_id = city.persistent.clone();
+    let parent = snapshot.by_path(inside)?;
+    let parent_id = parent.persistent.clone();
     let mut created = String::new();
     let file = edit_saved_network(packet_tracer, |xml| {
-        let (edited, id) = pktfile::add_building(xml, &city_id, name, position)
+        let (edited, id) = pktfile::add_node(xml, &parent_id, kind, name, position)
             .map_err(|error| file_error(&error))?;
         created = id;
         Ok(edited)
@@ -164,6 +146,39 @@ pub async fn remove_location<P: PacketTracer>(
     })
 }
 
+/// Moves a device or location into furniture by editing the saved network: Packet Tracer
+/// mounts anything dropped into a wiring closet in its first rack, so its own calls cannot
+/// put a device on a table, a shelf or a second rack.
+pub(crate) async fn move_node<P: PacketTracer>(
+    packet_tracer: &P,
+    subject: &Node,
+    target: &Node,
+    position: Option<(i32, i32)>,
+) -> Result<Moved, PtError> {
+    let (subject_id, target_id) = (subject.persistent.clone(), target.persistent.clone());
+    let name = subject
+        .device
+        .clone()
+        .unwrap_or_else(|| subject.name.clone());
+    let file = edit_saved_network(packet_tracer, |xml| {
+        pktfile::move_node(xml, &subject_id, &target_id, position)
+            .map_err(|error| file_error(&error))
+    })
+    .await?;
+    let snapshot = Snapshot::read(packet_tracer).await?;
+    let moved = match &subject.device {
+        Some(device) => snapshot.device(device)?,
+        None => snapshot
+            .by_persistent(&subject_id)
+            .ok_or_else(|| PtError::UnexpectedReply(format!("`{name}` is gone after the move")))?,
+    };
+    Ok(Moved {
+        moved: name,
+        now_in: moved.parent.clone().unwrap_or_default(),
+        file: Some(file),
+    })
+}
+
 async fn finish<P: PacketTracer>(
     packet_tracer: &P,
     persistent: &str,
@@ -177,7 +192,7 @@ async fn finish<P: PacketTracer>(
     })?;
     Ok(FileEdit {
         location: snapshot.location_of(node)?,
-        file,
+        file: Some(file),
     })
 }
 

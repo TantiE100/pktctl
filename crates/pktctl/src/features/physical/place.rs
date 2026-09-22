@@ -2,7 +2,10 @@ use ptmp::{Call, Value};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::tree::{Location, Node, Snapshot, is_duplicate, object, plain_name, split};
+use super::{
+    file_edit::{DEFAULT_POSITION, FileEdit, add_node, move_node},
+    tree::{Node, Snapshot, is_duplicate, object, plain_name, split},
+};
 use crate::{
     features::paths::{app_window, device},
     packet_tracer::{PacketTracer, PtError, expect_bool, expect_text},
@@ -12,20 +15,84 @@ const MAX_CLIMB: usize = 12;
 const CONTAINER_KINDS_FOR_CLOSETS: &[&str] = &["universe", "city", "building"];
 /// Where Packet Tracer puts a device dropped into a wiring closet: the rack of the
 /// default closets, the table of new ones.
-const FURNITURE: &[&str] = &["rack", "stackable_table", "old_table", "shelf"];
+const FURNITURE: &[&str] = &[
+    "rack",
+    "stackable_table",
+    "old_table",
+    "shelf",
+    "cable_pegboard",
+    "generic_container",
+];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NewLocation {
+    /// A city in Intercity.
     #[default]
     City,
+    /// A wiring closet in Intercity, a city or a building.
     WiringCloset,
+    /// A building in a city.
+    Building,
+    /// A rack, for devices mounted in a wiring closet.
+    Rack,
+    /// A table to lay devices on.
+    Table,
+    /// A shelf.
+    Shelf,
+    /// A cable pegboard.
+    CablePegboard,
+    /// A generic container, for anything else.
+    Container,
+}
+
+impl NewLocation {
+    /// `PhysicalObjectType` value, for the kinds written straight into the network file.
+    pub(crate) fn type_code(self) -> Option<i64> {
+        Some(match self {
+            Self::City | Self::WiringCloset => return None,
+            Self::Building => 2,
+            Self::Rack => 4,
+            Self::Container => 8,
+            Self::Shelf => 9,
+            Self::Table => 10,
+            Self::CablePegboard => 11,
+        })
+    }
+
+    pub(crate) fn default_name(self) -> &'static str {
+        match self {
+            Self::City => "City",
+            Self::WiringCloset => "Wiring Closet",
+            Self::Building => "Building",
+            Self::Rack => "Rack",
+            Self::Table => "Table",
+            Self::Shelf => "Shelf",
+            Self::CablePegboard => "Cable Pegboard",
+            Self::Container => "Container",
+        }
+    }
+
+    /// Where Packet Tracer accepts this kind.
+    pub(crate) fn goes_inside(self) -> &'static [&'static str] {
+        match self {
+            Self::City => &["universe"],
+            Self::WiringCloset => CONTAINER_KINDS_FOR_CLOSETS,
+            Self::Building => &["city"],
+            _ => &["wiring_closet", "building", "city", "generic_container"],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct AddLocationRequest {
-    /// What to create. Packet Tracer only lets external apps create cities and wiring closets.
+    /// What to create: `city`, `wiring_closet`, `building`, `rack`, `table`, `shelf`,
+    /// `cable_pegboard` or `container`. Packet Tracer's own API only creates cities and
+    /// wiring closets; the rest are written into the network file.
     pub kind: NewLocation,
+    /// Name for the new location. Packet Tracer's default name is used when omitted.
+    #[serde(default)]
+    pub name: Option<String>,
     /// Path of the city or building to put a wiring closet in, for example
     /// `Home City/Corporate Office`. Omit for Intercity. Cities always go in Intercity.
     #[serde(default)]
@@ -62,22 +129,26 @@ pub struct Moved {
     pub moved: String,
     /// Path of the location it ended up in.
     pub now_in: String,
+    /// The temporary copy Packet Tracer now has open, when the move went through the
+    /// network file. Save with `save_network` and a path to keep it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
 }
 
 pub async fn add_location<P: PacketTracer>(
     packet_tracer: &P,
     request: &AddLocationRequest,
-) -> Result<Location, PtError> {
+) -> Result<FileEdit, PtError> {
     let before = Snapshot::read(packet_tracer).await?;
     let target = match request.inside.as_deref().map(str::trim) {
         None | Some("") => before.by_path("")?,
         Some(path) => before.by_path(path)?,
     };
-    let (button, allowed): (&str, &[&str]) = match request.kind {
-        NewLocation::City => ("addCity", &["universe"]),
-        NewLocation::WiringCloset => ("addCloset", CONTAINER_KINDS_FOR_CLOSETS),
+    let button = match request.kind {
+        NewLocation::City => "addCity",
+        _ => "addCloset",
     };
-    if !allowed.contains(&target.kind.as_str()) {
+    if !request.kind.goes_inside().contains(&target.kind.as_str()) {
         return Err(PtError::InvalidInput(format!(
             "a {} cannot go inside `{}`, which is a {}",
             label(request.kind),
@@ -86,6 +157,31 @@ pub async fn add_location<P: PacketTracer>(
         )));
     }
     ensure_reachable(&target.path)?;
+    let name = request
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    if let Some(kind) = request.kind.type_code() {
+        let position = match (request.x, request.y) {
+            (Some(x), Some(y)) => (x, y),
+            (None, None) => DEFAULT_POSITION,
+            _ => {
+                return Err(PtError::InvalidInput(
+                    "give both x and y, or neither".into(),
+                ));
+            }
+        };
+        let target_path = target.path.clone();
+        return add_node(
+            packet_tracer,
+            kind,
+            &target_path,
+            name.unwrap_or_else(|| request.kind.default_name()),
+            position,
+        )
+        .await;
+    }
     let existing: Vec<String> = before.children("").map(|node| node.uuid.clone()).collect();
 
     let toolbar = app_window().method("getPhysicalToolbar", []);
@@ -111,7 +207,16 @@ pub async fn add_location<P: PacketTracer>(
     let handle = object(&created);
     descend(packet_tracer, &handle, "", &target_path).await?;
     place_at(packet_tracer, &handle, request.x, request.y).await?;
-    Snapshot::read(packet_tracer).await?.location(&created)
+    if let Some(name) = name {
+        packet_tracer
+            .call(handle.clone().method("setName", [Value::qstring(name)]))
+            .await?;
+    }
+    let location = Snapshot::read(packet_tracer).await?.location(&created)?;
+    Ok(FileEdit {
+        location,
+        file: None,
+    })
 }
 
 pub async fn move_to_location<P: PacketTracer>(
@@ -146,6 +251,24 @@ pub async fn move_to_location<P: PacketTracer>(
         )));
     }
 
+    if FURNITURE.contains(&target.kind.as_str()) {
+        return move_node(
+            packet_tracer,
+            &subject,
+            &target,
+            match (request.x, request.y) {
+                (Some(x), Some(y)) => Some((x, y)),
+                (None, None) => None,
+                _ => {
+                    return Err(PtError::InvalidInput(
+                        "give both x and y, or neither".into(),
+                    ));
+                }
+            },
+        )
+        .await;
+    }
+
     let handle = match &subject.device {
         Some(name) => device(name).method("getPhysicalObject", []),
         None => object(&subject.uuid),
@@ -176,6 +299,7 @@ pub async fn move_to_location<P: PacketTracer>(
     Ok(Moved {
         moved: subject.device.clone().unwrap_or(subject.name),
         now_in: now,
+        file: None,
     })
 }
 
@@ -305,5 +429,11 @@ fn label(kind: NewLocation) -> &'static str {
     match kind {
         NewLocation::City => "city",
         NewLocation::WiringCloset => "wiring closet",
+        NewLocation::Building => "building",
+        NewLocation::Rack => "rack",
+        NewLocation::Table => "table",
+        NewLocation::Shelf => "shelf",
+        NewLocation::CablePegboard => "cable pegboard",
+        NewLocation::Container => "container",
     }
 }

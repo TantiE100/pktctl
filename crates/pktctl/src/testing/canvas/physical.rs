@@ -19,6 +19,7 @@ const OFFICE: usize = 2;
 #[derive(Debug, Clone)]
 pub(super) struct Place {
     persistent: String,
+    background: String,
     name: String,
     kind: i32,
     x: i32,
@@ -37,6 +38,7 @@ pub(super) struct Physical {
 impl Default for Physical {
     fn default() -> Self {
         let place = |name: &str, kind, x, y, parent: Option<usize>| Place {
+            background: String::new(),
             persistent: persistent_id(
                 parent.map_or(0, |parent| parent + 1) * 100
                     + usize::try_from(kind).unwrap_or_default(),
@@ -70,6 +72,7 @@ impl Physical {
 
     fn add(&mut self, name: &str, kind: i32, (x, y): (i32, i32), parent: usize) -> usize {
         self.places.push(Place {
+            background: String::new(),
             persistent: persistent_id(1000 + self.places.len()),
             name: name.into(),
             kind,
@@ -161,6 +164,7 @@ impl Physical {
                 .and_then(|uuid| places.iter().position(|place| &place.persistent == uuid));
             #[allow(clippy::cast_possible_truncation)]
             places.push(Place {
+                background: String::new(),
                 persistent: node.uuid.clone(),
                 name: node.name.clone(),
                 kind: i32::try_from(node.kind).unwrap_or_default(),
@@ -277,6 +281,18 @@ fn attribute(physical: &mut Physical, id: usize, step: &Step) -> Result<Value, R
             .map(|()| Value::Int(i32::try_from(physical.children(id).len()).unwrap_or(i32::MAX))),
         "getObjectUuid" => no_args(step, CLASS).map(|()| Value::Uuid(format!("{{place-{id}}}"))),
         "getPathUuid" => no_args(step, CLASS).map(|()| Value::qstring(&place.persistent)),
+        "getBackground" => no_args(step, CLASS).map(|()| Value::string(&place.background)),
+        "setBackground" => {
+            check_args(step, CLASS, &[TypeCode::QString, TypeCode::Bool])?;
+            let path = step.args[0].as_str().unwrap_or_default().to_owned();
+            physical.places[id].background = path;
+            Ok(Value::Void)
+        }
+        "setName" => {
+            let name = qstring_arg(step, CLASS)?.to_owned();
+            physical.places[id].name = name;
+            Ok(Value::Void)
+        }
         "moveTo" => {
             check_args(step, CLASS, &[TypeCode::Int, TypeCode::Int])?;
             let place = &mut physical.places[id];

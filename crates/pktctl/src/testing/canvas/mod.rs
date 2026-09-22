@@ -166,6 +166,7 @@ struct State {
     events: Vec<Event>,
     physical: physical::Physical,
     physical_mode: bool,
+    logical_background: String,
     simulation: simulation::Simulation,
     realtime_presses: Vec<String>,
     options: std::collections::BTreeMap<&'static str, bool>,

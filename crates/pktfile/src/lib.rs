@@ -7,7 +7,9 @@ mod elements;
 mod physical;
 mod wireless;
 
-pub use physical::{PhysicalNode, add_building, physical_nodes, remove_node, rename_node};
+pub use physical::{
+    PhysicalNode, add_building, add_node, move_node, physical_nodes, remove_node, rename_node,
+};
 pub use wireless::{ClientProfile, client_profile, set_client_profile};
 
 use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};

@@ -1,3 +1,5 @@
+mod arrange;
+mod background;
 mod file_edit;
 mod place;
 mod tree;
@@ -6,9 +8,11 @@ use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub use arrange::{ArrangeRequest, Arrangement, Placed, arrange_devices};
+pub use background::{Background, BackgroundRequest, set_background};
 pub use file_edit::{
-    AddBuildingRequest, FileEdit, LocationRemoved, RemoveLocationRequest, RenameLocationRequest,
-    add_building, remove_location, rename_location,
+    FileEdit, LocationRemoved, RemoveLocationRequest, RenameLocationRequest, remove_location,
+    rename_location,
 };
 pub use place::{
     AddLocationRequest, MoveRequest, Moved, NewLocation, add_location, move_to_location,
@@ -80,8 +84,12 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "add_location",
-        description = "Create a city in Intercity, or a wiring closet in Intercity, a city or a \
-                       building. Returns the new location with its path.",
+        description = "Create a place in the physical workspace: a `city`, a `building`, a \
+                       `wiring_closet`, or furniture to arrange devices on (`rack`, `table`, \
+                       `shelf`, `cable_pegboard`, `container`), with an optional name and \
+                       position. Cities and closets use Packet Tracer's own buttons; the rest \
+                       are written into the network file and come back with the temporary copy \
+                       Packet Tracer now has open, so save with save_network to keep them.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -91,7 +99,7 @@ impl<P: PacketTracer> PktctlServer<P> {
     async fn add_location_tool(
         &self,
         Parameters(request): Parameters<AddLocationRequest>,
-    ) -> Result<Json<Location>, String> {
+    ) -> Result<Json<FileEdit>, String> {
         add_location(self.packet_tracer(), &request)
             .await
             .map(Json)
@@ -166,22 +174,46 @@ impl<P: PacketTracer> PktctlServer<P> {
     }
 
     #[tool(
-        name = "add_building",
-        description = "Create a named building inside a city. Packet Tracer has no call for \
-                       this, so pktctl takes the network as bytes, adds the building and opens \
-                       the result as a temporary copy; your own file is not written, save with \
-                       save_network and a path to keep the change.",
+        name = "arrange_devices",
+        description = "Lay devices out in tidy rows inside a room, building or rack of the \
+                       physical workspace, moving in the ones that are somewhere else. Choose \
+                       the devices and the order, or leave them out to arrange everything \
+                       already there; `columns`, `spacing_x`, `spacing_y`, `start_x` and \
+                       `start_y` shape the grid.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
             open_world_hint = false
         )
     )]
-    async fn add_building_tool(
+    async fn arrange_devices_tool(
         &self,
-        Parameters(request): Parameters<AddBuildingRequest>,
-    ) -> Result<Json<FileEdit>, String> {
-        add_building(self.packet_tracer(), &request)
+        Parameters(request): Parameters<ArrangeRequest>,
+    ) -> Result<Json<Arrangement>, String> {
+        arrange_devices(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "set_background",
+        description = "Paper a physical location (a city, building, room or rack) with a \
+                       background image, or the logical workspace when no location is given. \
+                       Takes one of Packet Tracer's own backgrounds (grid_10x10, grid_25x25, \
+                       grid_50x50, grid_100x100, city, building, intercity, container) or the \
+                       absolute path of an image; an empty image clears it.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn set_background_tool(
+        &self,
+        Parameters(request): Parameters<BackgroundRequest>,
+    ) -> Result<Json<Background>, String> {
+        set_background(self.packet_tracer(), &request)
             .await
             .map(Json)
             .map_err(|error| error.to_string())
@@ -279,7 +311,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!((city.path.as_str(), city.kind.as_str()), ("City", "city"));
+        assert_eq!(
+            (city.location.path.as_str(), city.location.kind.as_str()),
+            ("City", "city")
+        );
 
         let closet = add_location(
             &packet_tracer,
@@ -288,10 +323,12 @@ mod tests {
                 inside: Some(format!("Intercity/{OFFICE}")),
                 x: Some(300),
                 y: Some(120),
+                ..AddLocationRequest::default()
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .location;
         assert_eq!(closet.path, "Home City/Corporate Office/Wiring Closet");
         assert_eq!((closet.x, closet.y), (300, 120));
 
@@ -465,12 +502,12 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(renamed.location.path, "Cochabamba");
-        assert!(std::path::Path::new(&renamed.file).exists());
+        assert!(std::path::Path::new(renamed.file.as_deref().unwrap()).exists());
         let list = list_locations(&packet_tracer).await.unwrap();
         assert!(list.locations.iter().any(|location| location.path
             == "Cochabamba/Corporate Office/Main Wiring Closet/Rack"
             && location.devices == ["R1", "S1"]));
-        std::fs::remove_file(renamed.file).unwrap();
+        std::fs::remove_file(renamed.file.unwrap()).unwrap();
     }
 
     #[tokio::test]
@@ -497,10 +534,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_ne!(renamed.file, own_path);
+        assert_ne!(renamed.file.as_deref(), Some(own_path.as_str()));
         assert_eq!(std::fs::read(&own).unwrap(), original);
         std::fs::remove_file(own).unwrap();
-        std::fs::remove_file(renamed.file).unwrap();
+        std::fs::remove_file(renamed.file.unwrap()).unwrap();
     }
 
     #[tokio::test]
@@ -531,50 +568,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(moved.now_in, "El Alto");
-        std::fs::remove_file(renamed.file).unwrap();
-    }
-
-    #[tokio::test]
-    async fn adds_named_buildings_to_cities_only() {
-        let (_canvas, packet_tracer) = lab().await;
-        let building = add_building(
-            &packet_tracer,
-            &AddBuildingRequest {
-                inside: "Home City".into(),
-                name: "Alcaldía GAMC".into(),
-                x: Some(400),
-                y: Some(150),
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(building.location.path, "Home City/Alcaldía GAMC");
-        assert_eq!(building.location.kind, "building");
-        assert_eq!((building.location.x, building.location.y), (400, 150));
-        std::fs::remove_file(&building.file).unwrap();
-
-        let refused = add_building(
-            &packet_tracer,
-            &AddBuildingRequest {
-                inside: "Home City/Corporate Office".into(),
-                name: "Anexo".into(),
-                ..AddBuildingRequest::default()
-            },
-        )
-        .await
-        .unwrap_err();
-        assert!(refused.to_string().contains("inside a city"), "{refused}");
-
-        let bad_name = rename_location(
-            &packet_tracer,
-            &RenameLocationRequest {
-                path: "Home City".into(),
-                name: "a/b".into(),
-            },
-        )
-        .await
-        .unwrap_err();
-        assert!(matches!(bad_name, PtError::InvalidInput(_)));
+        std::fs::remove_file(renamed.file.unwrap()).unwrap();
     }
 
     #[tokio::test]
@@ -595,7 +589,8 @@ mod tests {
             },
         )
         .await
-        .unwrap();
+        .unwrap()
+        .location;
         move_to_location(&packet_tracer, &move_device("PC1", &closet.path))
             .await
             .unwrap();
@@ -621,6 +616,168 @@ mod tests {
         assert!(!paths.contains(&closet.path), "{paths:?}");
         assert!(paths.iter().any(|path| path == MAIN_CLOSET));
         std::fs::remove_file(removed.file).unwrap();
+    }
+
+    #[tokio::test]
+    async fn adds_furniture_and_names_it() {
+        let (_canvas, packet_tracer) = lab().await;
+        let table = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::Table,
+                inside: Some(MAIN_CLOSET.into()),
+                name: Some("Mesa de trabajo".into()),
+                x: Some(120),
+                y: Some(80),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            table.location.path,
+            format!("{MAIN_CLOSET}/Mesa de trabajo")
+        );
+        assert_eq!(table.location.kind, "stackable_table");
+        assert!(table.file.is_some(), "furniture goes through the file");
+        std::fs::remove_file(table.file.unwrap()).unwrap();
+
+        let building = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::Building,
+                inside: Some("Home City".into()),
+                name: Some("Alcaldía GAMC".into()),
+                ..AddLocationRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(building.location.kind, "building");
+        std::fs::remove_file(building.file.unwrap()).unwrap();
+
+        let closet = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::WiringCloset,
+                inside: Some("Home City".into()),
+                name: Some("Cuarto de Equipos".into()),
+                ..AddLocationRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(closet.location.path, "Home City/Cuarto de Equipos");
+        assert!(closet.file.is_none(), "closets use Packet Tracer's button");
+
+        let refused = add_location(
+            &packet_tracer,
+            &AddLocationRequest {
+                kind: NewLocation::Building,
+                inside: Some(MAIN_CLOSET.into()),
+                ..AddLocationRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            refused.to_string().contains("cannot go inside"),
+            "{refused}"
+        );
+    }
+
+    #[tokio::test]
+    async fn arranges_devices_in_rows() {
+        let (_canvas, packet_tracer) = lab().await;
+        let arranged = arrange_devices(
+            &packet_tracer,
+            &ArrangeRequest {
+                location: OFFICE.into(),
+                devices: vec!["PC1".into(), "R1".into(), "S1".into()],
+                columns: Some(2),
+                spacing_x: Some(50),
+                spacing_y: Some(40),
+                start_x: Some(10),
+                start_y: Some(20),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            arranged
+                .devices
+                .iter()
+                .map(|placed| (placed.device.as_str(), placed.x, placed.y))
+                .collect::<Vec<_>>(),
+            [("PC1", 10, 20), ("R1", 60, 20), ("S1", 10, 60)]
+        );
+        let list = list_locations(&packet_tracer).await.unwrap();
+        let office = list
+            .locations
+            .iter()
+            .find(|location| location.path == OFFICE)
+            .unwrap();
+        assert!(office.devices.contains(&"R1".to_owned()), "{office:?}");
+
+        let everything = arrange_devices(
+            &packet_tracer,
+            &ArrangeRequest {
+                location: OFFICE.into(),
+                ..ArrangeRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(everything.devices.len(), 3);
+        let bad = arrange_devices(
+            &packet_tracer,
+            &ArrangeRequest {
+                location: OFFICE.into(),
+                columns: Some(0),
+                ..ArrangeRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(bad, PtError::InvalidInput(_)), "{bad}");
+    }
+
+    #[tokio::test]
+    async fn papers_locations_and_the_logical_workspace() {
+        let (_canvas, packet_tracer) = lab().await;
+        let room = set_background(
+            &packet_tracer,
+            &BackgroundRequest {
+                location: Some(MAIN_CLOSET.into()),
+                image: "grid_25x25".into(),
+                tiled: true,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(room.image, "../art/Background/grid_25x25.png");
+        assert_eq!(room.target, MAIN_CLOSET);
+
+        let logical = set_background(
+            &packet_tracer,
+            &BackgroundRequest {
+                image: "/tmp/plano.png".into(),
+                ..BackgroundRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(logical.target, "logical workspace");
+
+        let unknown = set_background(
+            &packet_tracer,
+            &BackgroundRequest {
+                image: "plano.png".into(),
+                ..BackgroundRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(unknown, PtError::InvalidInput(_)), "{unknown}");
     }
 
     #[tokio::test]

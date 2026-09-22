@@ -14,6 +14,7 @@ const Y: &[u8] = b"Y";
 const CHILDREN: &[u8] = b"CHILDREN";
 const BUILDING: i64 = 2;
 const DEVICE: i64 = 6;
+const FURNITURE_KINDS: &[i64] = &[4, 5, 8, 9, 10, 11];
 const TEMPLATE_FILE: &[u8] = include_bytes!("../assets/empty-9.0.1.pkt");
 
 /// One `<NODE>` of the physical workspace, located by byte ranges in the XML.
@@ -245,6 +246,132 @@ pub fn rename_node(xml: &str, uuid: &str, name: &str) -> Result<String, PktError
     Ok(edited)
 }
 
+/// Moves the node `uuid` inside `parent_uuid`, at `position` when one is given.
+/// Packet Tracer mounts anything dropped in a wiring closet into its first rack, so
+/// furniture and racks other than that one can only be filled this way.
+pub fn move_node(
+    xml: &str,
+    uuid: &str,
+    parent_uuid: &str,
+    position: Option<(i32, i32)>,
+) -> Result<String, PktError> {
+    let nodes = physical_nodes(xml)?;
+    let node = find(&nodes, uuid)?;
+    let parent = find(&nodes, parent_uuid)?;
+    if node.element.start <= parent.element.start && parent.element.end <= node.element.end {
+        return Err(PktError::NodeInUse(
+            node.name.clone(),
+            format!("`{}` is inside it", parent.name),
+        ));
+    }
+    let mut edited = xml.to_owned();
+    if node.kind == DEVICE {
+        retarget_device(&mut edited, &nodes, node, parent)?;
+    }
+    let nodes = physical_nodes(&edited)?;
+    let node = find(&nodes, uuid)?;
+    let moved_range = node.element.clone();
+    let base = moved_range.start;
+    let mut moved = edited[moved_range.clone()].to_owned();
+    if let Some((x, y)) = position {
+        let mut places = [
+            (shift(&node.x_text, base), x.to_string()),
+            (shift(&node.y_text, base), y.to_string()),
+        ];
+        places.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+        for (range, value) in places {
+            moved.replace_range(range, &value);
+        }
+    }
+    edited.replace_range(moved_range, "");
+    let parent_uuid = parent.uuid.clone();
+    let nodes = physical_nodes(&edited)?;
+    let parent = find(&nodes, &parent_uuid)?;
+    match &parent.children {
+        Children::Open { close_tag, .. } => edited.insert_str(*close_tag, &moved),
+        Children::Empty(range) => {
+            edited.replace_range(range.clone(), &format!("<CHILDREN>{moved}</CHILDREN>"));
+        }
+        Children::Missing => {
+            return Err(PktError::NodeNotFound(format!("children of {parent_uuid}")));
+        }
+    }
+    Ok(edited)
+}
+
+/// Packet Tracer stores each device's physical path three times: the `PHYSICAL` chain, the
+/// `PARENT_PATH` up to the room that holds it, and the `CONTAINER_ID` of the furniture it
+/// sits on. A file whose chains disagree with the tree is refused as corrupted.
+fn retarget_device(
+    xml: &mut String,
+    nodes: &[PhysicalNode],
+    node: &PhysicalNode,
+    parent: &PhysicalNode,
+) -> Result<(), PktError> {
+    let ancestors = ancestry(nodes, parent);
+    let (room, container) = if FURNITURE_KINDS.contains(&parent.kind) {
+        (
+            &ancestors[..ancestors.len() - 1],
+            Some(parent.uuid.as_str()),
+        )
+    } else {
+        (&ancestors[..], None)
+    };
+    let parent_path = room.join(",");
+    let container_id = container.unwrap_or(&parent.uuid).to_owned();
+    let mut physical = room.to_vec();
+    if let Some(container) = container {
+        physical.push(container);
+    }
+    physical.push(&node.uuid);
+    let physical = physical.join(",");
+
+    let marker = format!("{}</PHYSICAL>", node.uuid);
+    let end = xml
+        .find(&marker)
+        .ok_or_else(|| PktError::NodeNotFound(format!("physical chain of {}", node.name)))?;
+    let start = xml[..end]
+        .rfind("<PHYSICAL>")
+        .ok_or_else(|| PktError::NodeNotFound(format!("physical chain of {}", node.name)))?;
+    let tail = end + marker.len();
+    let block = xml[tail..].to_owned();
+    let mut edits = vec![(start + "<PHYSICAL>".len()..end + node.uuid.len(), physical)];
+    for (tag, value) in [("PARENT_PATH", parent_path), ("CONTAINER_ID", container_id)] {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+        let at = block
+            .find(&open)
+            .ok_or_else(|| PktError::NodeNotFound(format!("{tag} of {}", node.name)))?;
+        let value_start = tail + at + open.len();
+        let value_end = tail
+            + block[at..]
+                .find(&close)
+                .ok_or_else(|| PktError::NodeNotFound(format!("{tag} of {}", node.name)))?
+            + at;
+        edits.push((value_start..value_end, value));
+    }
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    for (range, value) in edits {
+        xml.replace_range(range, &value);
+    }
+    Ok(())
+}
+
+/// The uuids from the root down to `node`, both included.
+fn ancestry<'n>(nodes: &'n [PhysicalNode], node: &'n PhysicalNode) -> Vec<&'n str> {
+    let mut chain = vec![node.uuid.as_str()];
+    let mut current = node;
+    while let Some(parent) = current.parent.as_deref() {
+        let Some(above) = nodes.iter().find(|node| node.uuid == parent) else {
+            break;
+        };
+        chain.push(above.uuid.as_str());
+        current = above;
+    }
+    chain.reverse();
+    chain
+}
+
 /// Removes the node `uuid` with everything inside it. Refuses Intercity and any
 /// location that still holds a device, since devices also live in the logical topology.
 pub fn remove_node(xml: &str, uuid: &str) -> Result<String, PktError> {
@@ -281,17 +408,29 @@ pub fn add_building(
     xml: &str,
     parent_uuid: &str,
     name: &str,
+    position: (i32, i32),
+) -> Result<(String, String), PktError> {
+    add_node(xml, parent_uuid, BUILDING, name, position)
+}
+
+/// Adds an empty node of `kind` (a building, rack, table, shelf, ...) inside
+/// `parent_uuid`; returns the new XML and the node's uuid.
+pub fn add_node(
+    xml: &str,
+    parent_uuid: &str,
+    kind: i64,
+    name: &str,
     (x, y): (i32, i32),
 ) -> Result<(String, String), PktError> {
     let nodes = physical_nodes(xml)?;
     let parent = find(&nodes, parent_uuid)?;
     let uuid = format!("{{{}}}", uuid::Uuid::new_v4());
-    let building = building_template(&uuid, name, (x, y))?;
+    let node = node_template(kind, &uuid, name, (x, y))?;
     let mut edited = xml.to_owned();
     match &parent.children {
-        Children::Open { close_tag, .. } => edited.insert_str(*close_tag, &building),
+        Children::Open { close_tag, .. } => edited.insert_str(*close_tag, &node),
         Children::Empty(range) => {
-            edited.replace_range(range.clone(), &format!("<CHILDREN>{building}</CHILDREN>"));
+            edited.replace_range(range.clone(), &format!("<CHILDREN>{node}</CHILDREN>"));
         }
         Children::Missing => {
             return Err(PktError::NodeNotFound(format!("children of {parent_uuid}")));
@@ -300,13 +439,39 @@ pub fn add_building(
     Ok((edited, uuid))
 }
 
-fn building_template(uuid: &str, name: &str, (x, y): (i32, i32)) -> Result<String, PktError> {
+/// A rack, table, shelf, pegboard or container, with the same fields Packet Tracer writes
+/// for the ones its own toolbar creates: no size, scale 1 and no background.
+fn furniture(kind: i64, uuid: &str, name: &str, (x, y): (i32, i32)) -> String {
+    format!(
+        "<NODE><X>{x}</X><Y>{y}</Y><TYPE>{kind}</TYPE>\
+         <NAME translate=\"true\">{}</NAME><SX>1</SX><SY>1</SY><W>0</W><H>0</H><D>0</D>\
+         <PATH isanim=\"false\"></PATH><CHILDREN/><MANUAL_SCALING>false</MANUAL_SCALING>\
+         <SCALED_PIXMAP_WIDTH>0</SCALED_PIXMAP_WIDTH>\
+         <SCALED_PIXMAP_HEIGHT>0</SCALED_PIXMAP_HEIGHT><INIT_WIDTH>0</INIT_WIDTH>\
+         <INIT_HEIGHT>0</INIT_HEIGHT><INIT_DEPTH>0</INIT_DEPTH><INIT_SX>1</INIT_SX>\
+         <INIT_SY>1</INIT_SY><INIT_SZ>1</INIT_SZ><BG_TILED>false</BG_TILED>\
+         <CUSTOM_IMAGE_WIDTH>-1</CUSTOM_IMAGE_WIDTH>\
+         <CUSTOM_IMAGE_HEIGHT>-1</CUSTOM_IMAGE_HEIGHT><SCALE_FACTOR>1</SCALE_FACTOR>\
+         <UUID_STR>{uuid}</UUID_STR><SLOT>0</SLOT><SUB_SLOT>0</SUB_SLOT><ICP_CSX>0</ICP_CSX>\
+         <ICP_CSY>0</ICP_CSY><USED>0</USED></NODE>",
+        escape(name)
+    )
+}
+
+/// Copies a node of the same kind from an empty Packet Tracer network when there is one,
+/// so every field Packet Tracer writes is kept; furniture, which the empty network has
+/// none of, is written with the same defaults Packet Tracer uses for a rack.
+fn node_template(
+    kind: i64,
+    uuid: &str,
+    name: &str,
+    (x, y): (i32, i32),
+) -> Result<String, PktError> {
     let empty = crate::decode(TEMPLATE_FILE)?;
     let nodes = physical_nodes(&empty)?;
-    let template = nodes
-        .iter()
-        .find(|node| node.kind == BUILDING)
-        .ok_or_else(|| PktError::NodeNotFound("building template".into()))?;
+    let Some(template) = nodes.iter().find(|node| node.kind == kind) else {
+        return Ok(furniture(kind, uuid, name, (x, y)));
+    };
     let base = template.element.start;
     let mut replacements = vec![
         (shift(&template.name_text, base), escape(name)),
@@ -319,7 +484,7 @@ fn building_template(uuid: &str, name: &str, (x, y): (i32, i32)) -> Result<Strin
     let mut text = empty[template.element.clone()].to_owned();
     let uuid_start = text
         .rfind(&template.uuid)
-        .ok_or_else(|| PktError::NodeNotFound("building template uuid".into()))?;
+        .ok_or_else(|| PktError::NodeNotFound("node template uuid".into()))?;
     replacements.push((
         uuid_start..uuid_start + template.uuid.len(),
         uuid.to_owned(),
@@ -443,6 +608,49 @@ mod tests {
                 "it still holds R1".into()
             ))
         );
+    }
+
+    #[test]
+    fn writes_furniture_the_way_packet_tracer_does() {
+        let xml = empty_network();
+        let closet = physical_nodes(&xml).unwrap()[0].uuid.clone();
+        let (edited, uuid) = add_node(&xml, &closet, 10, "Mesa Técnica", (5, 7)).unwrap();
+        let nodes = physical_nodes(&edited).unwrap();
+        let table = nodes.iter().find(|node| node.uuid == uuid).unwrap();
+        assert_eq!(
+            (table.name.as_str(), table.kind, table.parent.as_deref()),
+            ("Mesa Técnica", 10, Some(closet.as_str()))
+        );
+        assert_eq!((table.x, table.y), (5.0, 7.0));
+        let element = &edited[edited.find("<TYPE>10</TYPE>").unwrap() - 40..];
+        for field in [
+            "<SX>1</SX>",
+            "<W>0</W>",
+            "<INIT_SZ>1</INIT_SZ>",
+            "<USED>0</USED>",
+        ] {
+            assert!(element.contains(field), "furniture keeps {field}");
+        }
+        assert!(crate::decode(&crate::encode(&edited).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn moves_a_node_and_its_position() {
+        let xml = empty_network();
+        let nodes = physical_nodes(&xml).unwrap();
+        let (closet, city) = (nodes[0].uuid.clone(), nodes[2].uuid.clone());
+        let moved = move_node(&xml, &closet, &city, Some((12, 34))).unwrap();
+        let nodes = physical_nodes(&moved).unwrap();
+        let closet = nodes.iter().find(|node| node.uuid == closet).unwrap();
+        assert_eq!(closet.parent.as_deref(), Some(city.as_str()));
+        assert_eq!((closet.x, closet.y), (12.0, 34.0));
+
+        let nodes = physical_nodes(&xml).unwrap();
+        let (office, closet) = (nodes[1].uuid.clone(), nodes[0].uuid.clone());
+        assert!(matches!(
+            move_node(&xml, &office, &closet, None),
+            Err(PktError::NodeInUse(..))
+        ));
     }
 
     #[test]
