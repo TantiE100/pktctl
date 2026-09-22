@@ -1,7 +1,7 @@
-use ptmp::{Call, Session, SessionConfig, Value};
+use ptmp::{Call, Session, SessionConfig, Subscription, Value};
 use tokio::sync::Mutex;
 
-use super::{PacketTracer, PtError};
+use super::{Events, PacketTracer, PtError};
 
 #[derive(Debug)]
 pub struct LivePacketTracer {
@@ -37,5 +37,20 @@ impl PacketTracer for LivePacketTracer {
     async fn version(&self) -> Result<String, PtError> {
         let session = self.session().await?;
         Ok(session.pt_version().unwrap_or("unknown").to_owned())
+    }
+
+    async fn subscribe(&self, subscription: Subscription) -> Result<Events, PtError> {
+        let session = self.session().await?;
+        let events = session.events();
+        session.subscribe(subscription)?;
+        Ok(events)
+    }
+
+    async fn unsubscribe(&self, subscription: Subscription) -> Result<(), PtError> {
+        let session = self.session().await?;
+        Ok(session.subscribe(Subscription {
+            enabled: false,
+            ..subscription
+        })?)
     }
 }

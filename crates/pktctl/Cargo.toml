@@ -21,7 +21,7 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 ptmp = { workspace = true, features = ["fake"] }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "test-util"] }
 
 [lints]
 workspace = true

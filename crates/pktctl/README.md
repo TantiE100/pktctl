@@ -8,7 +8,7 @@ MCP over stdio and talks to Packet Tracer through [`ptmp`](../ptmp/README.md).
 | Module | Responsibility |
 |---|---|
 | `config` | Reads `PKTCTL_*` variables into `Config`; fails fast with a clear message. |
-| `packet_tracer` | The domain port: `PacketTracer` trait, `LivePacketTracer`, `PtError`. |
+| `packet_tracer` | The domain port: `PacketTracer` trait (calls, version, event subscriptions), `LivePacketTracer`, `PtError`, `CommandStatus`. |
 | `features` | One folder per tool; see [docs/features](../../docs/features/README.md). |
 | `server` | `PktctlServer`: composes the feature routers and serves stdio. |
 
