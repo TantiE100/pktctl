@@ -3,9 +3,12 @@
 use std::io::{Read, Write};
 
 mod eax;
+mod elements;
 mod physical;
+mod wireless;
 
 pub use physical::{PhysicalNode, add_building, physical_nodes, rename_node};
+pub use wireless::{ClientProfile, client_profile, set_client_profile};
 
 use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 

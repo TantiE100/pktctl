@@ -3,6 +3,8 @@ pub(super) enum PortKind {
     Router,
     Switch,
     Host,
+    ClientRadio,
+    AccessRadio,
 }
 
 impl PortKind {
@@ -10,12 +12,17 @@ impl PortKind {
         match self {
             Self::Router => "RouterPort",
             Self::Switch => "SwitchPort",
-            Self::Host => "HostPort",
+            Self::Host | Self::ClientRadio => "HostPort",
+            Self::AccessRadio => "Port",
         }
     }
 
     pub(super) fn has_ip(self) -> bool {
-        !matches!(self, Self::Switch)
+        !matches!(self, Self::Switch | Self::AccessRadio)
+    }
+
+    pub(super) fn is_radio(self) -> bool {
+        matches!(self, Self::ClientRadio | Self::AccessRadio)
     }
 }
 
@@ -97,11 +104,41 @@ pub(super) const MODELS: &[Model] = &[
         card_slots: 0,
         supported_modules: &[],
     },
+    Model {
+        name: "AccessPoint-PT",
+        hostname: "AccessPoint",
+        first_prompt: "",
+        type_code: 7,
+        class: "AccessPoint",
+        prefix: "Access Point",
+        ios: false,
+        ports: access_point_ports,
+        card_slots: 0,
+        supported_modules: &[],
+    },
+    Model {
+        name: "Laptop-PT",
+        hostname: "Laptop",
+        first_prompt: "",
+        type_code: 18,
+        class: "Pc",
+        prefix: "Laptop",
+        ios: false,
+        ports: laptop_ports,
+        card_slots: 0,
+        supported_modules: &[],
+    },
 ];
 
 pub(super) const MODULES: &[(&str, i32)] = &[("HWIC-2T", 2), ("NIM-2T", 2), ("NM-1FE-TX", 1)];
 pub(super) const INTERFACE_CARD: i32 = 2;
 pub(super) const NON_REMOVABLE_MODULE: i32 = 18;
+
+impl Model {
+    pub(super) fn has_port(&self, kind: PortKind) -> bool {
+        (self.ports)().iter().any(|(_, port)| *port == kind)
+    }
+}
 
 pub(super) fn model(name: &str) -> &'static Model {
     MODELS
@@ -124,6 +161,20 @@ fn switch_ports() -> Vec<(String, PortKind)> {
         .map(|name| (name, PortKind::Switch))
         .chain(std::iter::once(("Vlan1".to_owned(), PortKind::Router)))
         .collect()
+}
+
+fn access_point_ports() -> Vec<(String, PortKind)> {
+    vec![
+        ("Port 0".to_owned(), PortKind::Switch),
+        ("Port 1".to_owned(), PortKind::AccessRadio),
+    ]
+}
+
+fn laptop_ports() -> Vec<(String, PortKind)> {
+    vec![
+        ("Wireless0".to_owned(), PortKind::ClientRadio),
+        ("Bluetooth".to_owned(), PortKind::Host),
+    ]
 }
 
 fn host_ports() -> Vec<(String, PortKind)> {

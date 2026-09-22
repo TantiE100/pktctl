@@ -6,9 +6,11 @@ mod network;
 mod physical;
 mod remote;
 mod simulation;
+mod wireless;
 mod workspace;
 
 use std::{
+    fmt::Write,
     net::Ipv4Addr,
     sync::{Mutex, MutexGuard, PoisonError},
 };
@@ -56,6 +58,8 @@ struct Device {
     console_mode: &'static str,
     paged: Option<String>,
     running: Option<String>,
+    access_radio: Option<wireless::Radio>,
+    client: Option<wireless::Client>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
 }
@@ -78,6 +82,12 @@ impl Device {
             console_mode: "user",
             paged: None,
             running: None,
+            access_radio: model
+                .has_port(models::PortKind::AccessRadio)
+                .then(wireless::Radio::default),
+            client: model
+                .has_port(models::PortKind::ClientRadio)
+                .then(wireless::Client::default),
             powered: true,
             cards: vec![None; model.card_slots],
         }
@@ -139,6 +149,39 @@ impl State {
             notes: self.notes.clone(),
             physical: self.physical.clone(),
         }
+    }
+
+    fn document(&self) -> String {
+        let mut devices = String::new();
+        for device in &self.devices {
+            let wireless = device
+                .client
+                .as_ref()
+                .map(|client| wireless::profile_xml(&client.profile))
+                .unwrap_or_default();
+            let name = device.name.replace('&', "&amp;").replace('<', "&lt;");
+            let _ = write!(
+                devices,
+                "<DEVICE><ENGINE><NAME translate=\"true\">{name}</NAME>{wireless}</ENGINE></DEVICE>"
+            );
+        }
+        format!(
+            "<PACKETTRACER5><VERSION>9.0.1.0858</VERSION><NETWORK><DEVICES>{devices}</DEVICES></NETWORK>{}</PACKETTRACER5>",
+            self.physical.workspace_xml()
+        )
+    }
+
+    fn load_document(&mut self, xml: &str) -> Result<(), pktfile::PktError> {
+        self.physical = physical::Physical::from_nodes(&pktfile::physical_nodes(xml)?);
+        for device in &mut self.devices {
+            if let Some(client) = device.client.as_mut()
+                && let Ok(profile) = pktfile::client_profile(xml, &device.name)
+            {
+                client.profile = profile;
+            }
+        }
+        wireless::associate(self);
+        Ok(())
     }
 
     fn restore(&mut self, network: Network) {

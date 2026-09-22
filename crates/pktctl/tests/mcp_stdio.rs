@@ -13,7 +13,10 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 41] = [
+const TOOLS: [&str; 44] = [
+    "configure_access_point",
+    "connect_wireless",
+    "wireless_status",
     "fast_forward",
     "power_cycle_all",
     "set_power",
@@ -583,6 +586,33 @@ async fn simulates_a_ping_end_to_end() {
         events["structuredContent"]["events"][1]["status"],
         json!(["accepted"])
     );
+}
+
+#[tokio::test]
+async fn joins_a_secured_wireless_network_end_to_end() {
+    let (_canvas, _pt, mut client) = client_with_canvas().await;
+    for (model, name) in [("AccessPoint-PT", "AP"), ("Laptop-PT", "LT")] {
+        client
+            .call_tool("add_device", json!({ "model": model, "name": name }))
+            .await;
+    }
+    client
+        .call_tool(
+            "configure_access_point",
+            json!({ "device": "AP", "ssid": "GAMC", "security": "wpa2_psk", "key": "clave1234" }),
+        )
+        .await;
+    let joined = client
+        .call_tool(
+            "connect_wireless",
+            json!({ "device": "LT", "ssid": "GAMC", "security": "wpa2_psk", "key": "clave1234",
+                    "ip": "192.168.50.20", "mask": "255.255.255.0" }),
+        )
+        .await;
+    let joined = &joined["structuredContent"];
+    assert_eq!(joined["associated"], true, "{joined}");
+    assert_eq!(joined["access_point"], "AP");
+    std::fs::remove_file(joined["file"].as_str().unwrap()).unwrap();
 }
 
 #[tokio::test]
