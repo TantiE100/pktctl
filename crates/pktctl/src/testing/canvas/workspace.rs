@@ -1,7 +1,7 @@
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    CanvasNote, Device, Endpoint, Link, Network, State, activity,
+    CanvasDrawing, CanvasNote, Device, Endpoint, Link, Network, State, activity,
     models::MODELS,
     physical,
     remote::{Remote, check_args, no_args, number, qstring_arg},
@@ -181,6 +181,12 @@ fn logical(state: &mut State, step: &Step) -> Result<Value, Remote> {
             });
             Ok(Value::Uuid(id))
         }
+        "drawCircle"
+        | "drawLine"
+        | "getCanvasEllipseIds"
+        | "getCanvasLineIds"
+        | "getCanvasItemX"
+        | "getCanvasItemY" => drawings(state, step),
         "getCanvasNoteIds" => Ok(Value::Vector {
             element: TypeCode::Uuid,
             items: all_notes(state)
@@ -204,15 +210,87 @@ fn logical(state: &mut State, step: &Step) -> Result<Value, Remote> {
         "removeCanvasItem" => {
             check_args(step, WORKSPACE, &[TypeCode::Uuid])?;
             let id = step.args[0].as_str().unwrap_or_default();
-            let before = state.notes.len();
+            let before = state.notes.len() + state.drawings.len();
             state.notes.retain(|note| note.id != id);
-            Ok(Value::Bool(state.notes.len() < before))
+            state.drawings.retain(|drawing| drawing.id != id);
+            Ok(Value::Bool(
+                state.notes.len() + state.drawings.len() < before,
+            ))
         }
         "getWorkspaceImage" => {
             qstring_arg(step, WORKSPACE)?;
             Ok(Value::Bytes(
                 b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".to_vec(),
             ))
+        }
+        other => Err(Remote::unknown_method(WORKSPACE, other)),
+    }
+}
+
+/// The circles and lines of the logical canvas, which `draw` writes.
+fn drawings(state: &mut State, step: &Step) -> Result<Value, Remote> {
+    match step.method.as_str() {
+        "drawCircle" | "drawLine" => {
+            let circle = step.method == "drawCircle";
+            let types: &[TypeCode] = if circle {
+                &[
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Double,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                ]
+            } else {
+                &[
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Double,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Int,
+                ]
+            };
+            check_args(step, WORKSPACE, types)?;
+            state.next_note += 1;
+            let id = format!("{{00000000-0000-0000-0001-{:012}}}", state.next_note);
+            state.drawings.push(CanvasDrawing {
+                id: id.clone(),
+                circle,
+                x: int(&step.args[0]),
+                y: int(&step.args[1]),
+            });
+            Ok(Value::Uuid(id))
+        }
+        "getCanvasEllipseIds" | "getCanvasLineIds" => {
+            let circle = step.method == "getCanvasEllipseIds";
+            Ok(Value::Vector {
+                element: TypeCode::Uuid,
+                items: state
+                    .drawings
+                    .iter()
+                    .filter(|drawing| drawing.circle == circle)
+                    .map(|drawing| Value::Uuid(drawing.id.clone()))
+                    .collect(),
+            })
+        }
+        "getCanvasItemX" | "getCanvasItemY" => {
+            check_args(step, WORKSPACE, &[TypeCode::Uuid])?;
+            let id = step.args[0].as_str().unwrap_or_default();
+            let drawing = state
+                .drawings
+                .iter()
+                .find(|drawing| drawing.id == id)
+                .ok_or_else(|| Remote::missing("CanvasItem"))?;
+            Ok(Value::Int(if step.method == "getCanvasItemX" {
+                drawing.x
+            } else {
+                drawing.y
+            }))
         }
         other => Err(Remote::unknown_method(WORKSPACE, other)),
     }

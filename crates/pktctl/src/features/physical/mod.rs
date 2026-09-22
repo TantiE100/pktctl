@@ -14,6 +14,7 @@ pub use file_edit::{
     FileEdit, LocationRemoved, RemoveLocationRequest, RenameLocationRequest, remove_location,
     rename_location,
 };
+pub(crate) use place::SCENE;
 pub use place::{
     AddLocationRequest, MoveRequest, Moved, NewLocation, add_location, move_to_location,
 };
@@ -175,11 +176,11 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "arrange_devices",
-        description = "Lay devices out in tidy rows inside a room, building or rack of the \
-                       physical workspace, moving in the ones that are somewhere else. Choose \
-                       the devices and the order, or leave them out to arrange everything \
-                       already there; `columns`, `spacing_x`, `spacing_y`, `start_x` and \
-                       `start_y` shape the grid.",
+        description = "Lay devices out inside a room, building, rack or table of the physical \
+                       workspace, moving in the ones that are somewhere else. Positions are \
+                       percentages of the room, which is how Packet Tracer draws them: leave \
+                       them out for an even grid, set `columns` and `margin_percent` to shape \
+                       it, or give exact `spots` like [[20, 30], [60, 30]].",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -321,8 +322,8 @@ mod tests {
             &AddLocationRequest {
                 kind: NewLocation::WiringCloset,
                 inside: Some(format!("Intercity/{OFFICE}")),
-                x: Some(300),
-                y: Some(120),
+                x_percent: Some(30.0),
+                y_percent: Some(12.0),
                 ..AddLocationRequest::default()
             },
         )
@@ -330,7 +331,11 @@ mod tests {
         .unwrap()
         .location;
         assert_eq!(closet.path, "Home City/Corporate Office/Wiring Closet");
-        assert_eq!((closet.x, closet.y), (300, 120));
+        assert_eq!(
+            (closet.x, closet.y),
+            (1033, 259),
+            "percentages of the room become the coordinates Packet Tracer keeps"
+        );
 
         let refused = add_location(
             &packet_tracer,
@@ -627,8 +632,8 @@ mod tests {
                 kind: NewLocation::Table,
                 inside: Some(MAIN_CLOSET.into()),
                 name: Some("Mesa de trabajo".into()),
-                x: Some(120),
-                y: Some(80),
+                x_percent: Some(30.0),
+                y_percent: Some(40.0),
             },
         )
         .await
@@ -694,10 +699,8 @@ mod tests {
                 location: OFFICE.into(),
                 devices: vec!["PC1".into(), "R1".into(), "S1".into()],
                 columns: Some(2),
-                spacing_x: Some(50),
-                spacing_y: Some(40),
-                start_x: Some(10),
-                start_y: Some(20),
+                margin_percent: Some(10.0),
+                ..ArrangeRequest::default()
             },
         )
         .await
@@ -706,9 +709,9 @@ mod tests {
             arranged
                 .devices
                 .iter()
-                .map(|placed| (placed.device.as_str(), placed.x, placed.y))
+                .map(|placed| (placed.device.as_str(), placed.x_percent, placed.y_percent))
                 .collect::<Vec<_>>(),
-            [("PC1", 10, 20), ("R1", 60, 20), ("S1", 10, 60)]
+            [("PC1", 10.0, 10.0), ("R1", 90.0, 10.0), ("S1", 10.0, 90.0)]
         );
         let list = list_locations(&packet_tracer).await.unwrap();
         let office = list

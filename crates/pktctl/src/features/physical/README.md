@@ -9,7 +9,7 @@ where each device sits.
 |---|---|
 | `list_locations` | Every location with its path, kind, position and the devices directly inside it. |
 | `add_location` | Creates a city, a building, a wiring closet or furniture: `rack`, `table`, `shelf`, `cable_pegboard`, `container`. Cities and closets use Packet Tracer's buttons; the rest are written into the network file with the same fields its own buttons write. |
-| `move_to_location` | Moves a device or a whole location to another location, optionally to an `x`/`y` inside it. |
+| `move_to_location` | Moves a device or a whole location to another location, optionally to an `x_percent`/`y_percent` inside it. |
 | `rename_location` | Renames any location, including `City#2`-style duplicates. |
 | `arrange_devices` | Lays devices out in rows inside a room, a building or a piece of furniture. |
 | `set_background` | Papers a location, or the logical workspace, with one of Packet Tracer's backgrounds or an image of yours. |
@@ -52,10 +52,12 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
   instead, keeping the three places Packet Tracer stores a device's physical
   path in step (`PHYSICAL`, `PARENT_PATH` and `CONTAINER_ID`); a file whose
   chains disagree is refused as *corrupted Physical Workspace data*.
-- **Positions inside a container are small numbers**, not metres: Packet
-  Tracer stores them as a fraction of the container, so 0 to about 40 covers a
-  room. `arrange_devices` starts at 200 and spaces by 150 for rooms, which
-  Packet Tracer clamps into that range.
+- **Positions are percentages of the room.** Packet Tracer draws the contents
+  of a container as a fraction of a fixed scene (3444 by 2157 units), not from
+  metres, so `move_to_location` and `arrange_devices` take `x_percent` and
+  `y_percent`: 50 and 50 is the middle. Measured on 9.0.1: a device written at
+  20 percent lands at 20 percent of the room, and one written with raw
+  coordinates ends up piled in the corner.
 - **Colours**: Packet Tracer cannot paint a device's icon; `fillColor` only
   applies to IoT components. Rooms and the logical workspace take background
   images instead (`set_background`).

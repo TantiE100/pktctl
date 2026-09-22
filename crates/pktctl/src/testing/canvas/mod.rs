@@ -140,6 +140,14 @@ struct Link {
 }
 
 #[derive(Debug, Clone)]
+pub(super) struct CanvasDrawing {
+    pub(super) id: String,
+    pub(super) circle: bool,
+    pub(super) x: i32,
+    pub(super) y: i32,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct CanvasNote {
     pub(super) id: String,
     pub(super) text: String,
@@ -160,6 +168,7 @@ struct State {
     devices: Vec<Device>,
     links: Vec<Link>,
     notes: Vec<CanvasNote>,
+    drawings: Vec<CanvasDrawing>,
     next_note: u32,
     current_file: String,
     files: std::collections::HashMap<String, Network>,

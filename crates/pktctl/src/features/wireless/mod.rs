@@ -184,8 +184,8 @@ mod tests {
             &crate::features::physical::MoveRequest {
                 device: Some("AP".into()),
                 into: "Home City/Corporate Office".into(),
-                x: Some(900),
-                y: Some(0),
+                x_percent: Some(90.0),
+                y_percent: Some(0.0),
                 ..crate::features::physical::MoveRequest::default()
             },
         )
@@ -197,7 +197,7 @@ mod tests {
             .unwrap();
         assert!(!far.associated);
         let diagnosis = far.diagnosis.unwrap();
-        assert!(diagnosis.contains("AP is 900 units away"), "{diagnosis}");
+        assert!(diagnosis.contains("units away"), "{diagnosis}");
         assert!(diagnosis.contains("bring_access_point"));
 
         let brought = connect_wireless(

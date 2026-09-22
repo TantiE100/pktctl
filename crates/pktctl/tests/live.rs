@@ -344,7 +344,7 @@ async fn places_devices_in_the_physical_workspace() {
     let closet = ok(
         &mut client,
         "add_location",
-        json!({ "kind": "wiring_closet", "inside": city_path, "x": 120, "y": 80 }),
+        json!({ "kind": "wiring_closet", "inside": city_path, "x_percent": 30, "y_percent": 40 }),
     )
     .await;
     let closet_path = closet["location"]["path"].as_str().unwrap().to_owned();
@@ -353,7 +353,8 @@ async fn places_devices_in_the_physical_workspace() {
             closet["location"]["x"].as_i64(),
             closet["location"]["y"].as_i64()
         ),
-        (Some(120), Some(80))
+        (Some(1033), Some(863)),
+        "percentages of the room become Packet Tracer's own coordinates"
     );
 
     let moved = ok(
@@ -1118,6 +1119,47 @@ async fn answers_console_questions() {
 
 #[tokio::test]
 #[ignore = "needs a running Packet Tracer"]
+async fn draws_on_the_canvas() {
+    let mut client = live_client().await;
+    let circle = ok(
+        &mut client,
+        "draw",
+        json!({ "shape": "circle", "x": 300, "y": 400, "radius": 120, "color": "green" }),
+    )
+    .await;
+    assert_eq!(circle["color"], "#28963c", "{circle}");
+    let line = ok(
+        &mut client,
+        "draw",
+        json!({ "shape": "line", "x": 100, "y": 150, "to_x": 700, "to_y": 150, "color": "#ff8800" }),
+    )
+    .await;
+    let drawings = ok(&mut client, "list_drawings", json!({})).await;
+    let ids: Vec<&str> = drawings["drawings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect();
+    assert!(ids.contains(&circle["id"].as_str().unwrap()), "{drawings}");
+    assert!(ids.contains(&line["id"].as_str().unwrap()), "{drawings}");
+
+    for id in [&circle["id"], &line["id"]] {
+        ok(&mut client, "remove_drawing", json!({ "id": id })).await;
+    }
+    let left = ok(&mut client, "list_drawings", json!({})).await;
+    assert!(
+        !left["drawings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["id"] == circle["id"] || item["id"] == line["id"]),
+        "{left}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
 async fn furnishes_a_room_and_arranges_it() {
     let mut client = live_client().await;
     remove_leftovers(&mut client).await;
@@ -1153,10 +1195,11 @@ async fn furnishes_a_room_and_arranges_it() {
         &mut client,
         "arrange_devices",
         json!({ "location": format!("{closet}/E2E Mesa"), "devices": [ROUTER, SWITCH],
-                "columns": 2, "spacing_x": 4, "start_x": 2, "start_y": 2 }),
+                "columns": 2, "margin_percent": 25 }),
     )
     .await;
     assert_eq!(onto["devices"][0]["device"], ROUTER, "{onto}");
+    assert_eq!(onto["devices"][0]["x_percent"], 25.0, "{onto}");
     let locations = ok(&mut client, "list_locations", json!({})).await;
     let mesa = locations["locations"]
         .as_array()
