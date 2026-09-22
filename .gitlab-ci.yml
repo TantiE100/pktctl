@@ -1,0 +1,36 @@
+stages:
+  - test
+
+default:
+  image: rust:1.98
+  cache:
+    key: cargo-$CI_COMMIT_REF_SLUG
+    paths:
+      - target/
+      - .cargo-home/
+  before_script:
+    - export CARGO_HOME="$CI_PROJECT_DIR/.cargo-home"
+    - rustup component add rustfmt clippy
+
+.on_merge_requests_and_main:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+fmt:
+  stage: test
+  extends: .on_merge_requests_and_main
+  script:
+    - make fmt-check
+
+lint:
+  stage: test
+  extends: .on_merge_requests_and_main
+  script:
+    - make lint
+
+test:
+  stage: test
+  extends: .on_merge_requests_and_main
+  script:
+    - make test
