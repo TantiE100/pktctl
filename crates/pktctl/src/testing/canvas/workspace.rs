@@ -1,12 +1,13 @@
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Device, Endpoint, Link, State,
+    CanvasNote, Device, Endpoint, Link, Network, State,
     models::MODELS,
     remote::{Remote, check_args, number, qstring_arg},
 };
 
 const WORKSPACE: &str = "LogicalWorkspace";
+const APP_WINDOW: &str = "AppWindow";
 const STRAIGHT: i32 = 8100;
 const CROSS: i32 = 8101;
 const FIBER: i32 = 8103;
@@ -15,13 +16,56 @@ const FIBER_MULTIMODE: i32 = 8117;
 
 pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote> {
     let methods: Vec<&str> = steps.iter().map(|step| step.method.as_str()).collect();
-    let ["getActiveWorkspace", "getLogicalWorkspace", _] = methods.as_slice() else {
-        return Err(Remote::unknown_method(
-            "AppWindow",
+    match methods.as_slice() {
+        ["getActiveWorkspace", "getLogicalWorkspace", _] => logical(state, &steps[2]),
+        ["getActiveFile", "getSavedFilename"] => Ok(Value::qstring(&state.current_file)),
+        ["fileSaveAsNoPrompt"] => {
+            check_args(&steps[0], APP_WINDOW, &[TypeCode::QString, TypeCode::Bool])?;
+            let path = steps[0].args[0].as_str().unwrap_or_default().to_owned();
+            let snapshot = state.snapshot();
+            state.files.insert(path.clone(), snapshot);
+            state.current_file = path;
+            Ok(Value::Void)
+        }
+        ["fileNew"] => {
+            check_args(&steps[0], APP_WINDOW, &[TypeCode::Bool])?;
+            state.restore(Network::default());
+            state.current_file.clear();
+            Ok(Value::Bool(true))
+        }
+        ["fileOpen"] => {
+            let path = qstring_arg(&steps[0], APP_WINDOW)?.to_owned();
+            match state.files.get(&path).cloned() {
+                Some(network) => {
+                    state.restore(network);
+                    state.current_file = path;
+                    Ok(Value::Int(0))
+                }
+                None => Ok(Value::Int(6)),
+            }
+        }
+        _ => Err(Remote::unknown_method(
+            APP_WINDOW,
             methods.first().copied().unwrap_or(""),
-        ));
+        )),
+    }
+}
+
+pub(super) fn files(state: &State, steps: &[Step]) -> Result<Value, Remote> {
+    const CLASS: &str = "SystemFileManager";
+    let [step] = steps else {
+        return Err(Remote::unknown_method(CLASS, ""));
     };
-    let step = &steps[2];
+    let path = qstring_arg(step, CLASS)?;
+    let exists = state.files.contains_key(path);
+    match step.method.as_str() {
+        "fileExists" => Ok(Value::Bool(exists)),
+        "getFileSize" => Ok(Value::Int(if exists { 4096 } else { -1 })),
+        other => Err(Remote::unknown_method(CLASS, other)),
+    }
+}
+
+fn logical(state: &mut State, step: &Step) -> Result<Value, Remote> {
     match step.method.as_str() {
         "addDevice" => add_device(state, step),
         "removeDevice" => {
@@ -46,8 +90,96 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             });
             Ok(Value::Bool(state.links.len() < before))
         }
+        "getIncNoteZOrder" => Ok(Value::Double(f64::from(state.next_note) + 1.0)),
+        "addNote" => {
+            check_args(
+                step,
+                WORKSPACE,
+                &[
+                    TypeCode::Int,
+                    TypeCode::Int,
+                    TypeCode::Double,
+                    TypeCode::QString,
+                ],
+            )?;
+            state.next_note += 1;
+            let id = format!("{{00000000-0000-0000-0000-{:012}}}", state.next_note);
+            state.notes.push(CanvasNote {
+                id: id.clone(),
+                text: step.args[3].as_str().unwrap_or_default().to_owned(),
+                x: int(&step.args[0]),
+                y: int(&step.args[1]),
+            });
+            Ok(Value::Uuid(id))
+        }
+        "getCanvasNoteIds" => Ok(Value::Vector {
+            element: TypeCode::Uuid,
+            items: all_notes(state)
+                .into_iter()
+                .map(|note| Value::Uuid(note.id))
+                .collect(),
+        }),
+        "getCanvasNoteText" | "getCanvasItemRealX" | "getCanvasItemRealY" => {
+            check_args(step, WORKSPACE, &[TypeCode::Uuid])?;
+            let id = step.args[0].as_str().unwrap_or_default();
+            let note = all_notes(state)
+                .into_iter()
+                .find(|note| note.id == id)
+                .ok_or_else(|| Remote::missing("CanvasItem"))?;
+            Ok(match step.method.as_str() {
+                "getCanvasNoteText" => Value::qstring(&note.text),
+                "getCanvasItemRealX" => Value::Int(note.x),
+                _ => Value::Int(note.y),
+            })
+        }
+        "removeCanvasItem" => {
+            check_args(step, WORKSPACE, &[TypeCode::Uuid])?;
+            let id = step.args[0].as_str().unwrap_or_default();
+            let before = state.notes.len();
+            state.notes.retain(|note| note.id != id);
+            Ok(Value::Bool(state.notes.len() < before))
+        }
+        "getWorkspaceImage" => {
+            qstring_arg(step, WORKSPACE)?;
+            Ok(Value::Bytes(
+                b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".to_vec(),
+            ))
+        }
         other => Err(Remote::unknown_method(WORKSPACE, other)),
     }
+}
+
+fn all_notes(state: &State) -> Vec<CanvasNote> {
+    let labels = state.links.iter().enumerate().flat_map(|(index, link)| {
+        link.ends
+            .iter()
+            .enumerate()
+            .map(move |(end, endpoint)| CanvasNote {
+                id: format!("{{11111111-0000-0000-0000-{index:06}{end:06}}}"),
+                text: label(&endpoint.port),
+                x: 0,
+                y: 0,
+            })
+    });
+    state.notes.iter().cloned().chain(labels).collect()
+}
+
+fn label(port: &str) -> String {
+    [
+        ("GigabitEthernet", "Gig"),
+        ("FastEthernet", "Fa"),
+        ("Serial", "Se"),
+    ]
+    .iter()
+    .find_map(|(full, short)| port.strip_prefix(full).map(|rest| format!("{short}{rest}")))
+    .unwrap_or_else(|| port.to_owned())
+}
+
+fn int(value: &Value) -> i32 {
+    value
+        .as_i64()
+        .and_then(|number| i32::try_from(number).ok())
+        .unwrap_or_default()
 }
 
 fn add_device(state: &mut State, step: &Step) -> Result<Value, Remote> {
