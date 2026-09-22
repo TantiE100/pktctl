@@ -236,7 +236,16 @@ async fn files_round_trip_without_dialogs() {
         json!({ "path": path("one-router.pkt") }),
     )
     .await;
-    assert_eq!(opened["devices"], 1, "{opened}");
+    assert!(opened["devices"].as_u64().unwrap() >= 1, "{opened}");
+    let devices = ok(&mut client, "list_devices", json!({})).await;
+    assert!(
+        devices["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|device| device["name"] == ROUTER),
+        "{devices}"
+    );
 
     let missing = client
         .call_tool("open_network", json!({ "path": path("missing.pkt") }))

@@ -28,6 +28,12 @@ After saving, the file's existence and size are read back through Packet
 Tracer's own file manager, so a missing folder or a write failure is reported
 instead of assumed.
 
+Packet Tracer 9.0.1 adds a "Power Distribution Device" to the physical
+workspace every time a file is opened, so `devices` in the `open_network` reply
+and `list_devices` include one more of them per open. pktctl reports them as
+they are and never deletes them on its own; remove them with `remove_device`
+if they get in the way.
+
 ## Screenshots
 
 Packet Tracer renders the logical workspace itself (`getWorkspaceImage`), so the
