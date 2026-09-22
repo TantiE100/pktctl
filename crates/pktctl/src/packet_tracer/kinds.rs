@@ -98,6 +98,32 @@ pub(crate) const MODULE_KINDS: &[(i64, &str)] = &[
     (2000, "custom_module_type"),
 ];
 
+// com.cisco.pt.ipc.enums.ConnectType values, named the way the CCNA curriculum names cables.
+pub(crate) const CABLE_KINDS: &[(i64, &str)] = &[
+    (8100, "straight"),
+    (8101, "cross"),
+    (8102, "rollover"),
+    (8103, "fiber"),
+    (8104, "phone"),
+    (8105, "cable"),
+    (8106, "serial"),
+    (8107, "auto"),
+    (8108, "console"),
+    (8109, "wireless"),
+    (8110, "coaxial"),
+    (8111, "octal"),
+    (8112, "cellular"),
+    (8113, "usb"),
+    (8114, "custom_io"),
+    (8115, "bluetooth_paired"),
+    (8116, "bluetooth_broadcast"),
+    (8117, "fiber_multimode"),
+];
+
+pub fn cable_kind(code: i64) -> String {
+    name_for(CABLE_KINDS, code)
+}
+
 pub fn device_kind(code: i64) -> String {
     name_for(DEVICE_KINDS, code)
 }
@@ -129,6 +155,8 @@ mod tests {
         assert_eq!(device_kind(55), "data_historian");
         assert_eq!(module_kind(2), "interface_card");
         assert_eq!(module_kind(2000), "custom_module_type");
+        assert_eq!(cable_kind(8100), "straight");
+        assert_eq!(cable_kind(8117), "fiber_multimode");
     }
 
     #[test]
@@ -138,7 +166,7 @@ mod tests {
 
     #[test]
     fn tables_have_unique_values_and_names() {
-        for table in [DEVICE_KINDS, MODULE_KINDS] {
+        for table in [DEVICE_KINDS, MODULE_KINDS, CABLE_KINDS] {
             let mut values: Vec<_> = table.iter().map(|(value, _)| value).collect();
             let mut names: Vec<_> = table.iter().map(|(_, name)| name).collect();
             values.dedup();

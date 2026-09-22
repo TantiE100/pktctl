@@ -93,7 +93,7 @@ pub async fn add<P: PacketTracer>(
     let created = expect_text(&created, "created device name")?;
     if created.is_empty() {
         return Err(PtError::Rejected(format!(
-            "Packet Tracer did not create a {}",
+            "could not create a {}",
             model.model
         )));
     }
@@ -119,7 +119,7 @@ pub async fn remove<P: PacketTracer>(packet_tracer: &P, name: &str) -> Result<Re
         .await?;
     if !expect_bool(&removed, "removeDevice result")? {
         return Err(PtError::Rejected(format!(
-            "Packet Tracer kept device `{name}`"
+            "device `{name}` was not removed"
         )));
     }
     Ok(Removed {
@@ -155,9 +155,7 @@ pub async fn relocate<P: PacketTracer>(
         ))
         .await?;
     if !expect_bool(&moved, "moveToLocationCentered result")? {
-        return Err(PtError::Rejected(format!(
-            "Packet Tracer did not move `{name}`"
-        )));
+        return Err(PtError::Rejected(format!("device `{name}` was not moved")));
     }
     describe(packet_tracer, name).await
 }

@@ -14,10 +14,14 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 9] = [
+const TOOLS: [&str; 13] = [
     "add_device",
+    "connect",
+    "disconnect",
     "list_devices",
+    "list_links",
     "list_models",
+    "list_ports",
     "move_device",
     "remove_device",
     "rename_device",
@@ -279,6 +283,70 @@ async fn builds_renames_moves_and_removes_devices_end_to_end() {
         json!({ "removed": "PC-ADMIN" })
     );
     assert_eq!(canvas.device_names(), ["R1"]);
+}
+
+#[tokio::test]
+async fn cables_devices_together_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    for (model, name) in [("2911", "R1"), ("2960-24TT", "SW1"), ("PC-PT", "PC1")] {
+        client
+            .call_tool("add_device", json!({ "model": model, "name": name }))
+            .await;
+    }
+
+    let uplink = client
+        .call_tool(
+            "connect",
+            json!({ "device_a": "R1", "port_a": "GigabitEthernet0/0", "device_b": "SW1", "port_b": "GigabitEthernet0/1" }),
+        )
+        .await;
+    assert_eq!(
+        uplink["structuredContent"],
+        json!({
+            "a": { "device": "R1", "port": "GigabitEthernet0/0" },
+            "b": { "device": "SW1", "port": "GigabitEthernet0/1" },
+            "cable": "straight"
+        })
+    );
+    client
+        .call_tool(
+            "connect",
+            json!({ "device_a": "PC1", "port_a": "FastEthernet0", "device_b": "SW1", "port_b": "FastEthernet0/1" }),
+        )
+        .await;
+
+    let links = client.call_tool("list_links", json!({})).await;
+    assert_eq!(
+        links["structuredContent"]["links"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let ports = client
+        .call_tool("list_ports", json!({ "device": "PC1" }))
+        .await;
+    assert_eq!(
+        ports["structuredContent"]["ports"][0]["connection"],
+        json!({ "to": { "device": "SW1", "port": "FastEthernet0/1" }, "cable": "straight" })
+    );
+
+    let busy = client
+        .call_tool(
+            "connect",
+            json!({ "device_a": "R1", "port_a": "GigabitEthernet0/1", "device_b": "SW1", "port_b": "FastEthernet0/1" }),
+        )
+        .await;
+    assert_eq!(busy["isError"], true);
+
+    client
+        .call_tool(
+            "disconnect",
+            json!({ "device": "SW1", "port": "FastEthernet0/1" }),
+        )
+        .await;
+    assert_eq!(canvas.links().len(), 1);
 }
 
 #[tokio::test]
