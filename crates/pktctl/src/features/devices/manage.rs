@@ -12,6 +12,7 @@ use crate::{
 };
 
 const GRID_COLUMNS: i32 = 8;
+const INITIAL_DIALOG: &str = "initial configuration dialog";
 const GRID_STEP: i32 = 120;
 const GRID_ORIGIN: i32 = 100;
 
@@ -98,11 +99,18 @@ pub async fn add<P: PacketTracer>(
         )));
     }
 
-    if let Err(error) = packet_tracer
+    match packet_tracer
         .call(device(&created).method("skipBoot", []))
         .await
     {
-        tracing::debug!(%error, device = created, "device has no boot sequence to skip");
+        Ok(_) => {
+            if let Err(error) = ready_console(packet_tracer, &created).await {
+                tracing::warn!(%error, device = created, "console left at its first prompt");
+            }
+        }
+        Err(error) => {
+            tracing::debug!(%error, device = created, "device has no boot sequence to skip");
+        }
     }
 
     match wanted_name {
@@ -158,6 +166,31 @@ pub async fn relocate<P: PacketTracer>(
         return Err(PtError::Rejected(format!("device `{name}` was not moved")));
     }
     describe(packet_tracer, name).await
+}
+
+async fn ready_console<P: PacketTracer>(packet_tracer: &P, name: &str) -> Result<(), PtError> {
+    let console = device(name).method("getCommandLine", []);
+    let prompt = packet_tracer
+        .call(console.clone().method("getPrompt", []))
+        .await?;
+    let prompt = expect_text(&prompt, "console prompt")?;
+    let keystrokes: &[&str] = if prompt.contains(INITIAL_DIALOG) {
+        &["no", ""]
+    } else if prompt.trim().is_empty() {
+        &[""]
+    } else {
+        &[]
+    };
+    for keystroke in keystrokes {
+        packet_tracer
+            .call(
+                console
+                    .clone()
+                    .method("enterCommand", [Value::string(*keystroke)]),
+            )
+            .await?;
+    }
+    Ok(())
 }
 
 async fn set_name<P: PacketTracer>(

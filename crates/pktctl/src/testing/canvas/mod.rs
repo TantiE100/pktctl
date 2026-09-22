@@ -33,6 +33,7 @@ struct Device {
     y: f64,
     ports: Vec<Port>,
     cli: Vec<(String, String)>,
+    console_prompt: String,
 }
 
 impl Device {
@@ -56,6 +57,7 @@ impl Device {
             y,
             ports,
             cli: Vec::new(),
+            console_prompt: model.first_prompt.to_owned(),
         }
     }
 
@@ -147,6 +149,14 @@ impl Canvas {
                 }
             })
             .collect()
+    }
+
+    pub fn console_prompt(&self, device: &str) -> Option<String> {
+        self.state()
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)
+            .map(|device| device.console_prompt.clone())
     }
 
     pub fn cli_history(&self, device: &str) -> Vec<(String, String)> {

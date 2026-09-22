@@ -157,6 +157,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ios_consoles_are_ready_at_the_user_prompt() {
+        let (canvas, packet_tracer) = canvas();
+        for model in ["2911", "2960-24TT", "3560-24PS"] {
+            add(&packet_tracer, &add_request(model, None))
+                .await
+                .unwrap();
+        }
+        assert_eq!(canvas.console_prompt("Router0").as_deref(), Some("Router>"));
+        assert_eq!(canvas.console_prompt("Switch0").as_deref(), Some("Switch>"));
+        assert_eq!(
+            canvas.console_prompt("Multilayer Switch0").as_deref(),
+            Some("Switch>")
+        );
+    }
+
+    #[tokio::test]
     async fn adds_with_the_requested_name_and_position() {
         let (_canvas, packet_tracer) = canvas();
         let request = AddDeviceRequest {
