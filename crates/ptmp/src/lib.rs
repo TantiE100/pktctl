@@ -4,6 +4,7 @@ mod auth;
 mod call;
 mod error;
 mod event;
+mod fields;
 mod frame;
 mod message;
 mod negotiation;
@@ -16,7 +17,7 @@ pub mod fake;
 
 pub use auth::md5_digest;
 pub use call::{Call, Step};
-pub use error::{Error, FrameError, ProtocolError};
+pub use error::{EncodeError, Error, FrameError, ProtocolError};
 pub use event::{Event, Subscription};
 pub use frame::{Frame, FrameCodec, MAX_FRAME_LEN};
 pub use message::Message;

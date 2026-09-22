@@ -1,10 +1,10 @@
 use crate::{
     call::Call,
-    error::ProtocolError,
+    error::{EncodeError, ProtocolError},
     event::{Event, Subscription},
-    frame::Frame,
+    frame::{Frame, FrameBuilder},
     negotiation::Negotiation,
-    value::{Fields, Value},
+    value::Value,
 };
 
 mod kind {
@@ -62,39 +62,44 @@ pub enum Message {
 }
 
 impl Message {
-    pub fn to_frame(&self) -> Result<Frame, ProtocolError> {
-        let mut out = vec![self.kind().to_owned()];
+    pub fn to_frame(&self) -> Result<Frame, EncodeError> {
+        let mut out = FrameBuilder::default();
+        out.text(self.kind());
         match self {
             Self::NegotiationRequest(negotiation) | Self::NegotiationResponse(negotiation) => {
                 negotiation.encode(&mut out);
             }
-            Self::AuthRequest { app_id } => out.push(app_id.clone()),
-            Self::AuthChallenge { challenge } => out.push(challenge.clone()),
+            Self::AuthRequest { app_id } => out.text(app_id),
+            Self::AuthChallenge { challenge } => out.text(challenge),
             Self::AuthResponse { app_id, digest } => {
-                out.extend([app_id.clone(), digest.clone(), String::new()]);
+                out.text(app_id);
+                out.text(digest);
+                out.text("");
             }
-            Self::AuthStatus { accepted } => out.push(accepted.to_string()),
+            Self::AuthStatus { accepted } => out.text(&accepted.to_string()),
             Self::KeepAlive => {}
-            Self::Disconnect { reason } => out.push(reason.clone()),
+            Self::Disconnect { reason } => out.text(reason),
             Self::IpcCall { id, call } => {
-                out.push(id.to_string());
+                out.text(&id.to_string());
                 call.encode(&mut out)?;
             }
             Self::IpcError { id, class, message } => {
-                out.extend([id.to_string(), class.clone(), message.clone()]);
+                out.text(&id.to_string());
+                out.text(class);
+                out.text(message);
             }
             Self::IpcResponse { id, value } => {
-                out.push(id.to_string());
+                out.text(&id.to_string());
                 value.encode_result(&mut out);
             }
             Self::IpcEvent(event) => event.encode(&mut out),
             Self::IpcSubscribe(subscription) => subscription.encode(&mut out),
         }
-        Ok(Frame::new(out))
+        Ok(out.build()?)
     }
 
     pub fn from_frame(frame: &Frame) -> Result<Self, ProtocolError> {
-        let mut fields = Fields::new(frame.fields());
+        let mut fields = frame.fields();
         let kind = fields.next("message type")?;
         let message = match kind {
             kind::NEGOTIATION_REQUEST => {
@@ -133,10 +138,10 @@ impl Message {
             },
             kind::IPC_RESPONSE => {
                 let id = fields.parse("call id")?;
-                let value = if fields.peek().is_some() {
-                    Value::decode(&mut fields)?
-                } else {
+                let value = if fields.is_empty() {
                     Value::Void
+                } else {
+                    Value::decode(&mut fields)?
                 };
                 Self::IpcResponse { id, value }
             }
@@ -246,7 +251,7 @@ mod tests {
     fn rejects_trailing_garbage() {
         assert!(matches!(
             Message::from_frame(&frame(&["5", "true", "extra"])),
-            Err(ProtocolError::TrailingFields(1))
+            Err(ProtocolError::TrailingBytes(6))
         ));
     }
 

@@ -1,6 +1,8 @@
 use crate::{
     error::ProtocolError,
-    value::{Fields, TypeCode, Value},
+    fields::Fields,
+    frame::FrameBuilder,
+    value::{TypeCode, Value},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,17 +15,14 @@ pub struct Event {
 }
 
 impl Event {
-    pub(crate) fn encode(&self, out: &mut Vec<String>) {
-        out.extend([
-            self.token.clone(),
-            self.class.clone(),
-            self.object_uuid.clone(),
-            self.name.clone(),
-        ]);
+    pub(crate) fn encode(&self, out: &mut FrameBuilder) {
+        for field in [&self.token, &self.class, &self.object_uuid, &self.name] {
+            out.text(field);
+        }
         for arg in &self.args {
             arg.encode_result(out);
         }
-        out.push(TypeCode::Void.code().to_string());
+        out.text(&TypeCode::Void.code().to_string());
     }
 
     pub(crate) fn decode(fields: &mut Fields<'_>) -> Result<Self, ProtocolError> {
@@ -71,13 +70,11 @@ impl Subscription {
         }
     }
 
-    pub(crate) fn encode(&self, out: &mut Vec<String>) {
-        out.extend([
-            self.class.clone(),
-            self.object_uuid.clone(),
-            self.event.clone(),
-            self.enabled.to_string(),
-        ]);
+    pub(crate) fn encode(&self, out: &mut FrameBuilder) {
+        out.text(&self.class);
+        out.text(&self.object_uuid);
+        out.text(&self.event);
+        out.text(&self.enabled.to_string());
     }
 
     pub(crate) fn decode(fields: &mut Fields<'_>) -> Result<Self, ProtocolError> {
@@ -94,13 +91,20 @@ impl Subscription {
 mod tests {
     use super::*;
 
-    fn fields(values: &[&str]) -> Vec<String> {
-        values.iter().map(ToString::to_string).collect()
+    fn body(values: &[&str]) -> Vec<u8> {
+        let frame: crate::frame::Frame = values.iter().collect();
+        frame.body().to_vec()
+    }
+
+    fn encoded(encode: impl FnOnce(&mut FrameBuilder)) -> Vec<u8> {
+        let mut out = FrameBuilder::default();
+        encode(&mut out);
+        out.build().unwrap().body().to_vec()
     }
 
     #[test]
     fn decodes_captured_name_changed_event() {
-        let captured = fields(&[
+        let captured = body(&[
             "1465458924",
             "Device",
             "{5938e156-cea8-2dc4-0f11-397ef726d4ec}",
@@ -125,15 +129,13 @@ mod tests {
             name: "powerChanged".into(),
             args: vec![Value::Bool(false)],
         };
-        let mut out = Vec::new();
-        event.encode(&mut out);
+        let out = encoded(|out| event.encode(out));
         assert_eq!(Event::decode(&mut Fields::new(&out)).unwrap(), event);
     }
 
     #[test]
     fn subscription_matches_captured_wire_format() {
-        let mut out = Vec::new();
-        Subscription::to("Device", "{uuid}", "nameChanged").encode(&mut out);
-        assert_eq!(out, fields(&["Device", "{uuid}", "nameChanged", "true"]));
+        let out = encoded(|out| Subscription::to("Device", "{uuid}", "nameChanged").encode(out));
+        assert_eq!(out, body(&["Device", "{uuid}", "nameChanged", "true"]));
     }
 }

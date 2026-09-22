@@ -82,3 +82,16 @@ async fn non_ascii_names_survive_the_length_prefix() {
 
     assert_eq!(read_back.as_str(), Some(unicode));
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
+async fn workspace_image_arrives_as_raw_png_bytes() {
+    let session = Session::connect(&live_config()).await.unwrap();
+    let image = session
+        .call(logical_workspace().method("getWorkspaceImage", [Value::qstring("PNG")]))
+        .await
+        .unwrap()
+        .into_bytes()
+        .unwrap();
+    assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+}

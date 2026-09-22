@@ -16,7 +16,9 @@ Every message is `<length>\0<body>`:
   says "bytes or characters"; with text encoding it is bytes of UTF-8
   (**observed**: a device renamed to `Oficiña-Ñandú-→` round-trips).
 - `body` is a list of fields, each terminated by `\0`. The first field is the
-  message type.
+  message type. The one exception is a byte list value (see below): its bytes
+  are sent raw, without terminator, so a body is not guaranteed to end in `\0`
+  and must be parsed as bytes, not split into strings up front.
 
 ```
 7\0 5\0 true\0          -> type 5 (auth status), field "true"
@@ -101,6 +103,7 @@ The reply is matched by call id, so many calls can be in flight at once.
 | 13 | UUID | `{8-4-4-4-12}` |
 | 14 | pair **observed** | two typed values |
 | 15 | vector **observed** | element type, count, then `count` values without per-item codes |
+| 15 + 1 | byte list **observed** | `15 1 <count>` then `count` raw bytes, no terminators (for example a PNG screenshot) |
 
 String and QString are the same text on the wire, but each method accepts
 exactly one of them. Sending `getPort 9 ...` instead of `getPort 8 ...` fails
@@ -119,8 +122,11 @@ Packet Tracer ships the official framework inside its installation:
 - String flavour of each argument: the `*Impl` class delegates to
   `com.cisco.pt.ipc.IPCFactory`, whose bytecode calls either
   `createStringParameterMessage` (8) or `createQStringParameterMessage` (9).
-- Enum integers: `javap -c` on the enum, for example
-  `com.cisco.pt.ipc.enums.DeviceType` (`ROUTER=0`, `SWITCH=1`, `ACCESS_POINT=7`, ...).
+- Enum integers: `javap -c` on the enum. Each constant is built as
+  `(name, ordinal, value)` and the wire uses the **value**, which is not always
+  the ordinal. `DeviceType` values match their ordinals (`ROUTER=0`, `SWITCH=1`,
+  `ACCESS_POINT=7`, `PC=8`), but `ConnectType` starts at 8100
+  (`ETHERNET_STRAIGHT=8100`, `ETHERNET_CROSS=8101`, `SERIAL=8106`, `AUTO=8107`).
 - Semantics (valid modes, return meanings): the Javadoc, which quotes the
   original `.pki` declarations.
 

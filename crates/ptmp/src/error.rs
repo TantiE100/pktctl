@@ -8,10 +8,6 @@ pub enum FrameError {
     InvalidLength,
     #[error("frame of {0} bytes exceeds the maximum allowed size")]
     TooLarge(usize),
-    #[error("frame body is empty or not NUL-terminated")]
-    MalformedBody,
-    #[error("frame field is not valid UTF-8")]
-    InvalidUtf8,
     #[error("field contains a NUL byte and cannot be encoded")]
     NulInField,
     #[error(transparent)]
@@ -30,8 +26,27 @@ pub enum ProtocolError {
     UnknownTypeCode(String),
     #[error("{0:?} values cannot be sent as call arguments")]
     UnsupportedArgument(TypeCode),
-    #[error("message has {0} unexpected trailing fields")]
-    TrailingFields(usize),
+    #[error("field `{0}` is not valid UTF-8")]
+    InvalidUtf8(&'static str),
+    #[error("message has {0} unexpected trailing bytes")]
+    TrailingBytes(usize),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EncodeError {
+    #[error(transparent)]
+    Protocol(#[from] ProtocolError),
+    #[error(transparent)]
+    Frame(#[from] FrameError),
+}
+
+impl From<EncodeError> for Error {
+    fn from(error: EncodeError) -> Self {
+        match error {
+            EncodeError::Protocol(error) => Self::Protocol(error),
+            EncodeError::Frame(error) => Self::Frame(error),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
