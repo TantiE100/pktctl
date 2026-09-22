@@ -308,6 +308,10 @@ impl Canvas {
         path.clone_into(&mut state.current_file);
     }
 
+    pub fn is_physical_mode(&self) -> bool {
+        self.state().physical_mode
+    }
+
     pub fn realtime_presses(&self) -> Vec<String> {
         self.state().realtime_presses.clone()
     }

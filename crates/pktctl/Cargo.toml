@@ -23,6 +23,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-std", "process"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+xcap = "0.9.8"
 
 [dev-dependencies]
 pktctl = { path = ".", features = ["testing"] }

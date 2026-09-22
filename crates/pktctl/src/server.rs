@@ -7,7 +7,11 @@ use rmcp::{
     tool_handler,
 };
 
-use crate::{config::SetupSettings, packet_tracer::PacketTracer};
+use crate::{
+    config::SetupSettings,
+    desktop::{Desktop, SystemDesktop},
+    packet_tracer::PacketTracer,
+};
 
 const INSTRUCTIONS: &str = "pktctl drives a running Cisco Packet Tracer over its native IPC \
 protocol. Call `status` first: it reports whether Packet Tracer is reachable and why not. \
@@ -20,14 +24,20 @@ dedicated tool, search the full API with `describe_ipc` and call it with `call_i
 pub struct PktctlServer<P> {
     packet_tracer: Arc<P>,
     setup: Arc<SetupSettings>,
+    desktop: Arc<dyn Desktop>,
     tool_router: ToolRouter<Self>,
 }
 
 impl<P: PacketTracer> PktctlServer<P> {
     pub fn new(packet_tracer: P, setup: SetupSettings) -> Self {
+        Self::with_desktop(packet_tracer, setup, Arc::new(SystemDesktop))
+    }
+
+    pub fn with_desktop(packet_tracer: P, setup: SetupSettings, desktop: Arc<dyn Desktop>) -> Self {
         Self {
             packet_tracer: Arc::new(packet_tracer),
             setup: Arc::new(setup),
+            desktop,
             tool_router: Self::status_router()
                 + Self::devices_router()
                 + Self::cli_router()
@@ -54,6 +64,10 @@ impl<P: PacketTracer> PktctlServer<P> {
         &self.packet_tracer
     }
 
+    pub(crate) fn desktop(&self) -> &dyn Desktop {
+        self.desktop.as_ref()
+    }
+
     pub(crate) fn setup_settings(&self) -> &SetupSettings {
         &self.setup
     }
@@ -72,6 +86,7 @@ impl<P> Clone for PktctlServer<P> {
         Self {
             packet_tracer: Arc::clone(&self.packet_tracer),
             setup: Arc::clone(&self.setup),
+            desktop: Arc::clone(&self.desktop),
             tool_router: self.tool_router.clone(),
         }
     }

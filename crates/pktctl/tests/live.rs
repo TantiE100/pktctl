@@ -711,3 +711,25 @@ Contents/saves/06 Industrial -  OT/Industrial Control Systems/PLC - LadderLogic/
     assert_eq!(plain["is_activity"], false);
     std::fs::remove_dir_all(scratch).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "needs a visible Packet Tracer window and Screen Recording permission on macOS"]
+async fn captures_the_physical_workspace() {
+    let mut client = live_client().await;
+    for view in ["physical", "physical_rack", "window"] {
+        let shot = client
+            .call_tool("screenshot", json!({ "view": view }))
+            .await;
+        assert_eq!(
+            shot["content"][0]["mimeType"], "image/png",
+            "{view}: {shot}"
+        );
+    }
+    let mode = ok(
+        &mut client,
+        "call_ipc",
+        json!({ "from": "appWindow", "steps": [{ "method": "isPhysicalMode" }] }),
+    )
+    .await;
+    assert_eq!(mode["value"], false, "the logical view is restored");
+}
