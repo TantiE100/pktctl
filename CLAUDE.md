@@ -39,7 +39,8 @@ can be unit-tested with `ScriptedPacketTracer`.
   function + `#[tool_router(router = <name>_router, vis = "pub(crate)")]` impl on
   `PktctlServer<P>`), unit tests in the same file, and a `README.md`. Register
   the router in `server.rs` and cover it in `tests/mcp_stdio.rs`.
-- Features share IPC paths through `features/paths.rs`; cross-feature calls go
+- Features share IPC paths through `features/paths.rs` and console handling
+  through `features/terminal.rs`; cross-feature calls go
   through public functions (for example `catalog::find_device_model`).
 - Tool failures must reach the agent as tool errors (`Result<Json<T>, String>`),
   not JSON-RPC errors.

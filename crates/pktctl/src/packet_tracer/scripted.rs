@@ -46,7 +46,13 @@ impl ScriptedPacketTracer {
     }
 
     pub(crate) fn on_canvas(canvas: Arc<Canvas>) -> Self {
-        Self::new(move |call| canvas.handle(call).map_err(PtError::from))
+        Self::with_events(move |call, emitter| {
+            let reply = canvas.handle(call).map_err(PtError::from);
+            for event in canvas.take_events() {
+                emitter.emit(event);
+            }
+            reply
+        })
     }
 
     pub(crate) fn unreachable() -> Self {

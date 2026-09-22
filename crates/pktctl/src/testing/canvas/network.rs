@@ -3,9 +3,7 @@ use std::net::Ipv4Addr;
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Endpoint, Port, State,
-    models::INITIAL_DIALOG,
-    modules,
+    Endpoint, Port, State, console, modules,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
 };
 
@@ -67,7 +65,7 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
         }
         ("getCommandLine", rest) if state.devices[index].model().ios => {
             no_args(step, class)?;
-            console(state, index, rest)
+            console::handle(state, index, rest)
         }
         ("getPort", rest) => {
             let name = string_arg(step, class)?.to_owned();
@@ -75,30 +73,6 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
         }
         (_, []) => device_attribute(state, index, step),
         (other, _) => Err(Remote::unknown_method(class, other)),
-    }
-}
-
-fn console(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remote> {
-    const CLASS: &str = "TerminalLine";
-    let [step] = steps else {
-        return Err(Remote::unknown_method(CLASS, ""));
-    };
-    let device = &mut state.devices[index];
-    match step.method.as_str() {
-        "getPrompt" => {
-            no_args(step, CLASS)?;
-            Ok(Value::string(&device.console_prompt))
-        }
-        "enterCommand" => {
-            let keystroke = string_arg(step, CLASS)?;
-            device.console_prompt = match (device.console_prompt.as_str(), keystroke) {
-                (INITIAL_DIALOG, "no") => String::new(),
-                ("", "") => format!("{}>", device.model().hostname),
-                (current, _) => current.to_owned(),
-            };
-            Ok(Value::Void)
-        }
-        other => Err(Remote::unknown_method(CLASS, other)),
     }
 }
 
@@ -125,6 +99,8 @@ fn device_attribute(state: &mut State, index: usize, step: &Step) -> Result<Valu
                     .model()
                     .first_prompt
                     .clone_into(&mut device.console_prompt);
+                device.console_mode = "user";
+                device.paged = None;
             }
             device.powered = on;
             Ok(Value::Void)

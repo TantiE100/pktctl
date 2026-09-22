@@ -1,4 +1,6 @@
-use std::{process::Stdio, sync::Arc, time::Duration};
+mod support;
+
+use std::{sync::Arc, time::Duration};
 
 use pktctl::testing::{Canvas, HostAddressing};
 
@@ -6,12 +8,9 @@ use ptmp::{
     Call, Credentials, Event, Value,
     fake::{FAKE_PT_VERSION, FakePt, Reply},
 };
-use serde_json::{Value as Json, json};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
-    process::{Child, ChildStdin, ChildStdout, Command},
-    time::timeout,
-};
+use serde_json::json;
+use support::McpClient;
+use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
 const TOOLS: [&str; 26] = [
@@ -44,95 +43,8 @@ const TOOLS: [&str; 26] = [
 ];
 const SECRET: &str = "e2e-secret";
 
-struct McpClient {
-    _child: Child,
-    stdin: ChildStdin,
-    stdout: Lines<BufReader<ChildStdout>>,
-    next_id: u64,
-}
-
-impl McpClient {
-    async fn spawn(addr: &str) -> Self {
-        Self::spawn_as(addr, APP_ID, SECRET).await
-    }
-
-    async fn spawn_as(addr: &str, app_id: &str, secret: &str) -> Self {
-        Self::spawn_with(addr, app_id, secret, &[]).await
-    }
-
-    async fn spawn_with(addr: &str, app_id: &str, secret: &str, extra: &[(&str, &str)]) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_pktctl"))
-            .env("PKTCTL_ADDR", addr)
-            .env("PKTCTL_APP_ID", app_id)
-            .env("PKTCTL_SECRET", secret)
-            .envs(extra.iter().copied())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .expect("pktctl binary starts");
-        let stdin = child.stdin.take().unwrap();
-        let stdout = BufReader::new(child.stdout.take().unwrap()).lines();
-        let mut client = Self {
-            _child: child,
-            stdin,
-            stdout,
-            next_id: 1,
-        };
-        client.initialize().await;
-        client
-    }
-
-    async fn initialize(&mut self) {
-        let result = self
-            .request(
-                "initialize",
-                json!({
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": { "name": "pktctl-e2e", "version": "0" }
-                }),
-            )
-            .await;
-        assert_eq!(result["serverInfo"]["name"], "pktctl");
-        self.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
-            .await;
-    }
-
-    async fn request(&mut self, method: &str, params: Json) -> Json {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
-            .await;
-        loop {
-            let line = timeout(Duration::from_secs(10), self.stdout.next_line())
-                .await
-                .expect("pktctl answers in time")
-                .unwrap()
-                .expect("pktctl keeps stdout open");
-            let message: Json = serde_json::from_str(&line).unwrap();
-            if message["id"] == id {
-                assert!(message.get("error").is_none(), "json-rpc error: {message}");
-                return message["result"].clone();
-            }
-        }
-    }
-
-    async fn call_tool(&mut self, name: &str, arguments: Json) -> Json {
-        self.request(
-            "tools/call",
-            json!({ "name": name, "arguments": arguments }),
-        )
-        .await
-    }
-
-    async fn send(&mut self, message: Json) {
-        let mut line = message.to_string();
-        line.push('\n');
-        self.stdin.write_all(line.as_bytes()).await.unwrap();
-        self.stdin.flush().await.unwrap();
-    }
+async fn spawn(addr: &str) -> McpClient {
+    McpClient::spawn_as(addr, APP_ID, SECRET).await
 }
 
 async fn eventually<T>(mut check: impl FnMut() -> Option<T>) -> T {
@@ -188,14 +100,6 @@ fn two_device_network(call: &Call) -> Reply {
             };
             Value::qstring(text)
         }
-        ["network", "getDevice", "enterCommand"]
-            if call.steps()[1].args[0] == Value::qstring("R1") =>
-        {
-            Value::Pair(
-                Box::new(Value::Int(0)),
-                Box::new(Value::string("Cisco IOS Software, C2900")),
-            )
-        }
         ["network", "getDevice", "getCommandPrompt", "getObjectUuid"] => {
             Value::Uuid("{pc1-terminal}".into())
         }
@@ -238,7 +142,7 @@ async fn client_with_network() -> (FakePt, McpClient) {
     let pt = FakePt::start(credentials(), two_device_network)
         .await
         .unwrap();
-    let client = McpClient::spawn(&pt.addr().to_string()).await;
+    let client = spawn(&pt.addr().to_string()).await;
     (pt, client)
 }
 
@@ -247,13 +151,16 @@ async fn client_with_canvas() -> (Arc<Canvas>, FakePt, McpClient) {
     let pt = FakePt::start(credentials(), {
         let canvas = Arc::clone(&canvas);
         move |call| match canvas.handle(call) {
-            Ok(value) => Reply::Value(value),
+            Ok(value) => Reply::WithEvents {
+                value,
+                events: canvas.take_events(),
+            },
             Err(remote) => Reply::error(remote.class, remote.message),
         }
     })
     .await
     .unwrap();
-    let client = McpClient::spawn(&pt.addr().to_string()).await;
+    let client = spawn(&pt.addr().to_string()).await;
     (canvas, pt, client)
 }
 
@@ -629,19 +536,28 @@ async fn list_models_reads_the_hardware_catalog() {
 }
 
 #[tokio::test]
-async fn run_cli_returns_console_output() {
-    let (pt, mut client) = client_with_network().await;
+async fn run_cli_waits_for_console_output_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
     let result = client
         .call_tool(
             "run_cli",
-            json!({ "device": "R1", "command": "show version" }),
+            json!({ "device": "R1", "command": "ping 10.0.0.2" }),
         )
         .await;
-    assert_eq!(
-        result["structuredContent"],
-        json!({ "status": "ok", "output": "Cisco IOS Software, C2900" })
+    let run = &result["structuredContent"];
+    assert_eq!(run["finished"], true, "{result}");
+    assert_eq!(run["status"], "ok");
+    assert!(
+        run["output"]
+            .as_str()
+            .unwrap()
+            .contains("!!!!!\nSuccess rate is 100 percent"),
+        "{result}"
     );
-    assert_eq!(pt.calls()[0].steps()[2].args[1], Value::string("enable"));
+    assert_eq!(canvas.console_prompt("R1").as_deref(), Some("Router#"));
 }
 
 #[tokio::test]
@@ -698,7 +614,7 @@ async fn run_host_command_streams_console_output_until_the_command_ends() {
 
 #[tokio::test]
 async fn status_explains_an_unreachable_packet_tracer() {
-    let mut client = McpClient::spawn("127.0.0.1:1").await;
+    let mut client = spawn("127.0.0.1:1").await;
     let result = client.call_tool("status", json!({})).await;
     assert_eq!(result["structuredContent"]["connected"], false);
     assert!(
@@ -719,14 +635,4 @@ async fn refuses_to_start_without_credentials() {
         .unwrap();
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("PKTCTL_APP_ID is not set"));
-}
-
-#[tokio::test]
-#[ignore = "needs a running Packet Tracer with the pktctl ExApp registered"]
-async fn live_status_against_real_packet_tracer() {
-    let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set"));
-    let addr = std::env::var("PKTCTL_ADDR").unwrap_or_else(|_| "127.0.0.1:39000".into());
-    let mut client = McpClient::spawn_as(&addr, &var("PKTCTL_APP_ID"), &var("PKTCTL_SECRET")).await;
-    let status = client.call_tool("status", json!({})).await;
-    assert_eq!(status["structuredContent"]["connected"], true, "{status}");
 }

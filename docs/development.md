@@ -23,7 +23,7 @@
 | Unit | `#[cfg(test)]` modules next to the code | No |
 | Protocol E2E | `crates/ptmp/tests/session.rs`, real TCP against `FakePt` | No |
 | MCP E2E | `crates/pktctl/tests/mcp_stdio.rs`, spawns the binary and speaks JSON-RPC | No |
-| Live E2E | `#[ignore]` tests in both crates | Yes |
+| Live E2E | `#[ignore]` tests in `crates/ptmp/tests/live.rs` and `crates/pktctl/tests/live.rs` | Yes |
 
 Unit and fake-backed tests use byte sequences captured from a real Packet Tracer
 9.0.1 session, so they pin the exact wire format. Feature tests run on
@@ -46,9 +46,21 @@ export PKTCTL_SECRET='the KEY from your registration'
 make e2e-live
 ```
 
-The live suite creates one router with a non-ASCII name, reads it back and
-deletes it, to prove that PTMP length prefixes count UTF-8 bytes. Everything
-else is read-only.
+What the live suite does to the open network:
+
+- `ptmp`: creates one router with a non-ASCII name, reads it back and deletes
+  it, to prove that PTMP length prefixes count UTF-8 bytes.
+- `builds_a_working_lan_using_only_tools`: builds a LAN through the MCP binary
+  (router with an HWIC-2T, switch, two PCs, three cables), configures it with
+  `configure_ios` and `configure_host`, pings PC to gateway, PC to PC and router
+  to PC, adds a note and takes a screenshot. Every device is named `E2E-*` and
+  removed at the end; leftovers from an interrupted run are removed first.
+- `files_round_trip_without_dialogs`: saves the open network to a temporary
+  file, clears the canvas, saves and reopens a one-router network, then opens
+  the saved network again. It needs the `FILE` privilege, which the pktctl
+  template grants.
+
+Run a single test with `cargo test -p pktctl --test live -- --ignored <name>`.
 
 ## Debugging
 
