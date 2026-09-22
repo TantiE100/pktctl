@@ -1,36 +1,58 @@
 # devices
 
-Lists every device in the open network.
+Everything about devices as a whole: listing, creating, renaming, moving and
+deleting them.
 
-## Tool
+## Tools
 
-`list_devices`, no arguments, read-only.
+| Tool | Arguments | Returns |
+|---|---|---|
+| `list_devices` | none | every device |
+| `add_device` | `model`, optional `name`, optional `x` and `y` | the new device |
+| `rename_device` | `name`, `new_name` | the renamed device |
+| `move_device` | `name`, `x`, `y` | the moved device |
+| `remove_device` | `name` | `{ "removed": name }` |
+
+A device is reported as Packet Tracer shows it after the change, read back
+with fresh calls:
 
 ```json
-{
-  "devices": [
-    { "name": "R1", "model": "2911", "kind": "Router" },
-    { "name": "SW1", "model": "2960-24TT", "kind": "CiscoDevice" },
-    { "name": "PC1", "model": "PC-PT", "kind": "Pc" }
-  ]
-}
+{ "name": "R1", "model": "2911", "kind": "router", "x": 250.0, "y": 80.0 }
 ```
 
-Packet Tracer counts infrastructure objects as devices too; a network with a
-rack always contains a `Power Distribution Device` of kind `Device`.
+- `kind` is the device type from Packet Tracer's catalog (`router`, `switch`,
+  `multi_layer_switch`, `pc`, `server`, ...), the same names `list_models` uses.
+- `x` and `y` are the **center** of the device icon on the logical canvas, for
+  both input and output. Packet Tracer may round a new device's center by one
+  pixel.
+- Packet Tracer counts infrastructure objects as devices too; a network with a
+  rack always contains a `Power Distribution Device`.
 
-`kind` is Packet Tracer's own class name. Switches report `CiscoDevice` and
-multilayer switches report `Router`, so use `model` when the distinction
-matters.
+## Behaviour
+
+- `add_device` resolves `model` through the catalog (exact, then ignoring case,
+  spaces and dashes, so `isr 4331` finds `ISR4331`) and suggests close matches
+  otherwise. Without `x`/`y` it uses the next slot of an 8-column grid.
+- Routers and switches skip their boot sequence, so `run_cli` works right away.
+- Names are unique: `add_device` and `rename_device` refuse a name that is
+  already taken. Packet Tracer itself would accept the duplicate and leave one
+  device unreachable by name.
+- Operations on a missing device fail with ``device `X` not found``.
 
 ## IPC calls
 
-| Call | Reply |
+| Purpose | Call |
 |---|---|
-| `network().getDeviceCount()` | int `n` |
-| `network().getDeviceAt(i).getName()` for `i` in `0..n` | QString |
-| `network().getDeviceAt(i).getModel()` | QString |
-| `network().getDeviceAt(i).getClassName()` | QString |
+| count | `network().getDeviceCount()` |
+| read | `network().getDevice(name: QString)` or `getDeviceAt(i: int)`, then `getName()`, `getModel()`, `getType()`, `getCenterXCoordinate()`, `getCenterYCoordinate()` |
+| create | `appWindow().getActiveWorkspace().getLogicalWorkspace().addDevice(type: int, model: string, x: double, y: double)` returns the generated name, or empty on failure |
+| skip boot | `network().getDevice(name).skipBoot()` (IOS devices only) |
+| rename | `network().getDevice(name).setName(new: QString)` |
+| move | `network().getDevice(name).moveToLocationCentered(x: int, y: int)` returns bool |
+| delete | `...getLogicalWorkspace().removeDevice(name: QString)` returns bool |
 
-All per-device calls are sent at once and matched by call id, so a large
-network costs one round trip of latency, not `3n`.
+`addDevice` places the device by its center while `getXCoordinate` reports the
+top-left corner, which is why pktctl reads and moves by center only.
+
+Per-device reads are pipelined, so listing a large network costs one round trip
+of latency.
