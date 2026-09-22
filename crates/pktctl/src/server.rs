@@ -23,7 +23,7 @@ impl<P: PacketTracer> PktctlServer<P> {
     pub fn new(packet_tracer: P) -> Self {
         Self {
             packet_tracer: Arc::new(packet_tracer),
-            tool_router: Self::status_router(),
+            tool_router: Self::status_router() + Self::devices_router(),
         }
     }
 
