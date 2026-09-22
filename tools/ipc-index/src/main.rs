@@ -32,14 +32,18 @@ type Error = Box<dyn std::error::Error>;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let summaries = arguments.iter().any(|argument| argument == "--with-summaries");
+    let summaries = arguments
+        .iter()
+        .any(|argument| argument == "--with-summaries");
     let paths: Vec<&str> = arguments
         .iter()
         .filter(|argument| !argument.starts_with("--"))
         .map(String::as_str)
         .collect();
     let [jar, output, javadoc @ ..] = paths.as_slice() else {
-        eprintln!("usage: ipc-index <framework.jar> <output.json> [<javadoc.zip>] [--with-summaries]");
+        eprintln!(
+            "usage: ipc-index <framework.jar> <output.json> [<javadoc.zip>] [--with-summaries]"
+        );
         return ExitCode::FAILURE;
     };
     match run(jar, output, javadoc.first().copied(), summaries) {
@@ -137,7 +141,11 @@ fn sort_classes(classes: &BTreeMap<String, Class>) -> Sorted {
             interfaces.insert(
                 name,
                 Interface {
-                    extends: class.interfaces.iter().map(|parent| short(parent).to_owned()).collect(),
+                    extends: class
+                        .interfaces
+                        .iter()
+                        .map(|parent| short(parent).to_owned())
+                        .collect(),
                     methods,
                 },
             );
@@ -146,7 +154,11 @@ fn sort_classes(classes: &BTreeMap<String, Class>) -> Sorted {
         } else if name.ends_with("Impl") && !class.interfaces.is_empty() {
             impls.insert(
                 java_name.clone(),
-                class.interfaces.iter().map(|parent| short(parent).to_owned()).collect(),
+                class
+                    .interfaces
+                    .iter()
+                    .map(|parent| short(parent).to_owned())
+                    .collect(),
             );
         }
     }
@@ -186,9 +198,9 @@ fn build(
     index.insert("roots".into(), Value::Object(roots(&described)));
     index.insert(
         "data".into(),
-        Value::Object(factory.map_or_else(Map::new, |factory| {
-            layouts::read(classes, factory, &impls)
-        })),
+        Value::Object(
+            factory.map_or_else(Map::new, |factory| layouts::read(classes, factory, &impls)),
+        ),
     );
     index.insert(
         "events".into(),
@@ -239,7 +251,12 @@ fn describe(
                     .map(|java| Value::String(format!("?{}", short(java))))
                     .collect()
             },
-            |(_, params)| params.iter().map(|kind| Value::from(kind.clone())).collect(),
+            |(_, params)| {
+                params
+                    .iter()
+                    .map(|kind| Value::from(kind.clone()))
+                    .collect()
+            },
         );
         entry.insert("params".into(), Value::Array(params));
         entry.insert(
@@ -269,10 +286,7 @@ fn describe(
         methods.push(Value::Object(entry));
     }
     let mut described = Map::new();
-    described.insert(
-        "extends".into(),
-        Value::from(interface.extends.clone()),
-    );
+    described.insert("extends".into(), Value::from(interface.extends.clone()));
     described.insert("methods".into(), Value::Array(methods));
     Value::Object(described)
 }
@@ -372,7 +386,10 @@ fn returns(
     if let Some((_, kind)) = JAVA_RETURNS.iter().find(|(name, _)| *name == base) {
         return (*kind).to_owned();
     }
-    if matches!(base, "java.util.Vector" | "java.util.List" | "java.util.ArrayList") {
+    if matches!(
+        base,
+        "java.util.Vector" | "java.util.List" | "java.util.ArrayList"
+    ) {
         let inner = java
             .find('<')
             .map_or("?", |open| &java[open + 1..java.len() - 1]);

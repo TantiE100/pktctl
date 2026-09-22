@@ -32,7 +32,10 @@ const READERS: &[(&str, &str)] = &[
 enum Entry {
     /// The class this one extends, whose fields come first.
     Inherited(String),
-    Field { name: Option<String>, kind: String },
+    Field {
+        name: Option<String>,
+        kind: String,
+    },
 }
 
 /// The wire name of each implementation, read from `IPCResponseFactory`: it
@@ -72,13 +75,10 @@ fn read_method(insns: &[Insn]) -> (Vec<Entry>, bool) {
                 let Some((_, kind)) = READERS.iter().find(|(name, _)| *name == member.name) else {
                     continue;
                 };
-                let name = insns[at + 1..]
-                    .iter()
-                    .take(3)
-                    .find_map(|insn| match insn {
-                        Insn::PutField(name) => Some(name.clone()),
-                        _ => None,
-                    });
+                let name = insns[at + 1..].iter().take(3).find_map(|insn| match insn {
+                    Insn::PutField(name) => Some(name.clone()),
+                    _ => None,
+                });
                 entries.push(Entry::Field {
                     name,
                     kind: (*kind).to_owned(),
