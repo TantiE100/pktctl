@@ -32,6 +32,15 @@ pub(super) struct Services {
     ftp_users: BTreeMap<String, (String, String)>,
     email_users: BTreeMap<String, String>,
     mail_domain: String,
+    mailboxes: BTreeMap<String, Vec<StoredMail>>,
+}
+
+/// A mail waiting on the server: sender, subject, body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StoredMail {
+    pub(super) from: String,
+    pub(super) subject: String,
+    pub(super) body: String,
 }
 
 impl Default for Services {
@@ -70,7 +79,66 @@ impl Default for Services {
             )]),
             email_users: BTreeMap::new(),
             mail_domain: String::new(),
+            mailboxes: BTreeMap::new(),
         }
+    }
+}
+
+impl Services {
+    fn on(&self, process: &str) -> bool {
+        self.enabled.get(process).copied().unwrap_or(false)
+    }
+
+    /// The page an HTTP client gets for `path`, when the HTTP service is on.
+    pub(super) fn page(&self, path: &str) -> Option<&str> {
+        self.on("HttpServer")
+            .then(|| self.pages.get(path).map(String::as_str))
+            .flatten()
+    }
+
+    /// Resolves `name` through this server's A and CNAME records, when DNS is on.
+    pub(super) fn resolve(&self, name: &str) -> Option<Ipv4Addr> {
+        if !self.on("DnsServerProcess") {
+            return None;
+        }
+        let mut wanted = name.to_owned();
+        for _ in 0..8 {
+            let (_, code, value) = self
+                .records
+                .iter()
+                .find(|(record, code, _)| record.eq_ignore_ascii_case(&wanted) && *code != 2)?;
+            if *code == 1 {
+                return value.parse().ok();
+            }
+            wanted.clone_from(value);
+        }
+        None
+    }
+
+    /// Accepts a mail for a local account; false when the account does not exist.
+    pub(super) fn deliver(&mut self, to: &str, mail: StoredMail) -> Option<bool> {
+        if !self.on("SmtpServer") {
+            return None;
+        }
+        let (user, domain) = to.split_once('@').unwrap_or((to, ""));
+        if !domain.eq_ignore_ascii_case(&self.mail_domain) || !self.email_users.contains_key(user) {
+            return Some(false);
+        }
+        self.mailboxes
+            .entry(user.to_owned())
+            .or_default()
+            .push(mail);
+        Some(true)
+    }
+
+    /// Hands over and removes an account's mail, as POP3 does; None when the login fails.
+    pub(super) fn collect(&mut self, user: &str, password: &str) -> Option<Vec<StoredMail>> {
+        if !self.on("Pop3Server")
+            || self.email_users.get(user).map(String::as_str) != Some(password)
+        {
+            return None;
+        }
+        Some(self.mailboxes.remove(user).unwrap_or_default())
     }
 }
 

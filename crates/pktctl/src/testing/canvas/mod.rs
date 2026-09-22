@@ -1,6 +1,7 @@
 mod activity;
 mod catalog;
 mod console;
+mod desktop;
 mod models;
 mod modules;
 mod network;
@@ -82,6 +83,7 @@ struct Device {
     services: Option<services::Services>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
+    desktop: Option<desktop::Desktop>,
 }
 
 impl Device {
@@ -111,6 +113,7 @@ impl Device {
             services: (model.class == "Server").then(services::Services::default),
             powered: true,
             cards: vec![None; model.card_slots],
+            desktop: matches!(model.class, "Pc" | "Server").then(desktop::Desktop::default),
         }
     }
 

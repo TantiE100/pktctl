@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod catalog;
 pub mod cli;
+pub mod desktop;
 pub mod devices;
 pub mod events;
 pub mod host_console;

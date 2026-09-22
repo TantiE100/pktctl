@@ -156,6 +156,7 @@ mod tests {
                 finished: true,
                 status: Some(CommandStatus::Ok),
                 output: "Reply from 10.0.0.2: bytes=32 time<1ms TTL=128\nPackets: Sent = 1, Received = 1, Lost = 0 (0% loss)\n".into(),
+                question: None,
             }
         );
     }

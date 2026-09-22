@@ -173,6 +173,17 @@ pub(crate) async fn ready_console<P: PacketTracer>(
     name: &str,
 ) -> Result<(), PtError> {
     let console = device(name).method("getCommandLine", []);
+    let booting = packet_tracer
+        .call(device(name).method("isBooting", []))
+        .await
+        .ok()
+        .and_then(|booting| booting.as_bool())
+        .unwrap_or(false);
+    if booting {
+        packet_tracer
+            .call(device(name).method("skipBoot", []))
+            .await?;
+    }
     let prompt = packet_tracer
         .call(console.clone().method("getPrompt", []))
         .await?;
