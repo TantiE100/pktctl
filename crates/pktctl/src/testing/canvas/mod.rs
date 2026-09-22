@@ -32,6 +32,7 @@ struct Device {
     x: f64,
     y: f64,
     ports: Vec<Port>,
+    cli: Vec<(String, String)>,
 }
 
 impl Device {
@@ -54,6 +55,7 @@ impl Device {
             x,
             y,
             ports,
+            cli: Vec::new(),
         }
     }
 
@@ -145,6 +147,15 @@ impl Canvas {
                 }
             })
             .collect()
+    }
+
+    pub fn cli_history(&self, device: &str) -> Vec<(String, String)> {
+        self.state()
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)
+            .map(|device| device.cli.clone())
+            .unwrap_or_default()
     }
 
     pub fn host_addressing(&self, device: &str, port: &str) -> Option<HostAddressing> {
