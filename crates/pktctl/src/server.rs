@@ -12,8 +12,10 @@ use crate::{config::SetupSettings, packet_tracer::PacketTracer};
 const INSTRUCTIONS: &str = "pktctl drives a running Cisco Packet Tracer over its native IPC \
 protocol. Call `status` first: it reports whether Packet Tracer is reachable and why not. \
 Use `list_devices` to discover device names before targeting them, and `run_cli` to execute \
-IOS commands on routers and switches. If `status` says the app id is rejected, call \
-`setup_exapp` and follow its steps once.";
+IOS commands on routers and switches. After cabling or configuring, call `fast_forward` so \
+spanning tree, DHCP and routing converge before you test connectivity. For anything without a \
+dedicated tool, search the full API with `describe_ipc` and call it with `call_ipc`. If \
+`status` says the app id is rejected, call `setup_exapp` and follow its steps once.";
 
 pub struct PktctlServer<P> {
     packet_tracer: Arc<P>,
@@ -38,7 +40,8 @@ impl<P: PacketTracer> PktctlServer<P> {
                 + Self::setup_router()
                 + Self::ipc_router()
                 + Self::physical_router()
-                + Self::simulation_router(),
+                + Self::simulation_router()
+                + Self::power_router(),
         }
     }
 

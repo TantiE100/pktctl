@@ -27,6 +27,7 @@ there is no extension window to keep open and no polling bridge in between.
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
 | `list_locations`, `add_location`, `add_building`, `rename_location`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
 | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | Simulation mode with the per-hop event list and Packet Tracer's own explanations. |
+| `set_power`, `fast_forward`, `power_cycle_all` | Power and Realtime time controls; `fast_forward` makes STP, DHCP and routing converge at once. |
 | `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
 
 Dedicated tools cover everyday work; `call_ipc` reaches everything else.

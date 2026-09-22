@@ -4,7 +4,7 @@ use super::{
     CanvasNote, Device, Endpoint, Link, Network, State,
     models::MODELS,
     physical,
-    remote::{Remote, check_args, number, qstring_arg},
+    remote::{Remote, check_args, no_args, number, qstring_arg},
     simulation,
 };
 
@@ -33,6 +33,14 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
             Ok(Value::Void)
         }
         ["isPhysicalMode"] => Ok(Value::Bool(state.physical_mode)),
+        [
+            "getRealtimeToolbar",
+            button @ ("fastForwardTime" | "resetNetwork"),
+        ] => {
+            no_args(&steps[1], "RealtimeToolbar")?;
+            state.realtime_presses.push((*button).to_owned());
+            Ok(Value::Void)
+        }
         ["getUserCreatedPDU", "addSimplePdu"] => simulation::add_simple_pdu(state, &steps[1]),
         ["getActiveFile", "getSavedFilename"] => Ok(Value::qstring(&state.current_file)),
         ["fileSaveAsNoPrompt"] => {

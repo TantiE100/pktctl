@@ -13,7 +13,10 @@ use support::McpClient;
 use tokio::process::Command;
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 38] = [
+const TOOLS: [&str; 41] = [
+    "fast_forward",
+    "power_cycle_all",
+    "set_power",
     "add_pdu",
     "list_simulation_events",
     "simulation_mode",

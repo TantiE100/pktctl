@@ -128,6 +128,7 @@ struct State {
     physical: physical::Physical,
     physical_mode: bool,
     simulation: simulation::Simulation,
+    realtime_presses: Vec<String>,
 }
 
 impl State {
@@ -236,6 +237,10 @@ impl Canvas {
                 .clone_into(&mut device.console_prompt);
             device.console_mode = "user";
         }
+    }
+
+    pub fn realtime_presses(&self) -> Vec<String> {
+        self.state().realtime_presses.clone()
     }
 
     pub fn physical_parent(&self, device: &str) -> Option<String> {

@@ -8,6 +8,7 @@ pub mod links;
 pub mod modules;
 pub mod paths;
 pub mod physical;
+pub mod power;
 pub mod setup;
 pub mod simulation;
 pub mod status;
