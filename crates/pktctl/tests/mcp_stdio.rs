@@ -1,6 +1,6 @@
 use std::{process::Stdio, sync::Arc, time::Duration};
 
-use pktctl::testing::Canvas;
+use pktctl::testing::{Canvas, HostAddressing};
 
 use ptmp::{
     Call, Credentials, Event, Value,
@@ -14,7 +14,8 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 13] = [
+const TOOLS: [&str; 14] = [
+    "configure_host",
     "add_device",
     "connect",
     "disconnect",
@@ -350,6 +351,50 @@ async fn cables_devices_together_end_to_end() {
 }
 
 #[tokio::test]
+async fn configures_host_addressing_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "PC-PT", "name": "PC1" }))
+        .await;
+
+    let config = client
+        .call_tool(
+            "configure_host",
+            json!({ "device": "PC1", "ip": "192.168.10.10", "mask": "255.255.255.0", "gateway": "192.168.10.1" }),
+        )
+        .await;
+    assert_eq!(
+        config["structuredContent"],
+        json!({
+            "device": "PC1",
+            "port": "FastEthernet0",
+            "dhcp": false,
+            "ip": "192.168.10.10",
+            "mask": "255.255.255.0",
+            "gateway": "192.168.10.1"
+        })
+    );
+    assert_eq!(
+        canvas.host_addressing("PC1", "FastEthernet0"),
+        Some(HostAddressing {
+            ip: "192.168.10.10".parse().unwrap(),
+            mask: "255.255.255.0".parse().unwrap(),
+            gateway: "192.168.10.1".parse().unwrap(),
+            dns: std::net::Ipv4Addr::UNSPECIFIED,
+            dhcp: false,
+        })
+    );
+
+    let wrong = client
+        .call_tool(
+            "configure_host",
+            json!({ "device": "PC1", "ip": "192.168.10.10", "mask": "255.255.255.0", "gateway": "10.0.0.1" }),
+        )
+        .await;
+    assert_eq!(wrong["isError"], true);
+}
+
+#[tokio::test]
 async fn device_mistakes_come_back_as_readable_tool_errors() {
     let (_canvas, _pt, mut client) = client_with_canvas().await;
     let unknown_model = client
@@ -380,7 +425,9 @@ async fn advertises_every_feature_tool_with_schemas() {
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
     names.sort_unstable();
-    assert_eq!(names, TOOLS);
+    let mut expected = TOOLS;
+    expected.sort_unstable();
+    assert_eq!(names, expected);
 
     let run_cli = tools["tools"]
         .as_array()

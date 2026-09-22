@@ -20,6 +20,9 @@ struct Port {
     kind: PortKind,
     ip: Ipv4Addr,
     mask: Ipv4Addr,
+    gateway: Ipv4Addr,
+    dns: Ipv4Addr,
+    dhcp: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +43,9 @@ impl Device {
                 kind,
                 ip: Ipv4Addr::UNSPECIFIED,
                 mask: Ipv4Addr::UNSPECIFIED,
+                gateway: Ipv4Addr::UNSPECIFIED,
+                dns: Ipv4Addr::UNSPECIFIED,
+                dhcp: false,
             })
             .collect();
         Self {
@@ -91,6 +97,15 @@ pub struct LinkRecord {
     pub cable: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostAddressing {
+    pub ip: Ipv4Addr,
+    pub mask: Ipv4Addr,
+    pub gateway: Ipv4Addr,
+    pub dns: Ipv4Addr,
+    pub dhcp: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct Canvas {
     state: Mutex<State>,
@@ -130,6 +145,24 @@ impl Canvas {
                 }
             })
             .collect()
+    }
+
+    pub fn host_addressing(&self, device: &str, port: &str) -> Option<HostAddressing> {
+        let state = self.state();
+        let port = state
+            .devices
+            .iter()
+            .find(|candidate| candidate.name == device)?
+            .ports
+            .iter()
+            .find(|candidate| candidate.name == port)?;
+        Some(HostAddressing {
+            ip: port.ip,
+            mask: port.mask,
+            gateway: port.gateway,
+            dns: port.dns,
+            dhcp: port.dhcp,
+        })
     }
 
     pub fn handle(&self, call: &Call) -> Result<Value, Remote> {
