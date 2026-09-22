@@ -14,6 +14,8 @@ pub use live::LivePacketTracer;
 
 pub type Events = broadcast::Receiver<Event>;
 
+const MISSING_OBJECT: &str = "IPC Cache entry";
+
 pub trait PacketTracer: Send + Sync + 'static {
     fn call(&self, call: Call) -> impl Future<Output = Result<Value, PtError>> + Send;
 
@@ -38,6 +40,8 @@ pub enum PtError {
     NotRegistered(String),
     #[error("Packet Tracer rejected the request: {0}")]
     Rejected(String),
+    #[error("{0} not found")]
+    NotFound(String),
     #[error("Packet Tracer sent an unexpected reply: {0}")]
     UnexpectedReply(String),
     #[error("{0}")]
@@ -53,6 +57,9 @@ impl From<ptmp::Error> for PtError {
                 Self::Unreachable(error.to_string())
             }
             ptmp::Error::AuthRejected { .. } => Self::NotRegistered(error.to_string()),
+            ptmp::Error::Remote { class, message } if message.starts_with(MISSING_OBJECT) => {
+                Self::NotFound(class)
+            }
             ptmp::Error::Remote { class, message } => Self::Rejected(format!("{class}: {message}")),
             other => Self::Transport(other.to_string()),
         }
@@ -66,6 +73,23 @@ pub(crate) fn expect_text(value: &Value, what: &str) -> Result<String, PtError> 
             "{what} should be text, got {value:?}"
         ))),
     }
+}
+
+pub(crate) fn expect_number(value: &Value, what: &str) -> Result<f64, PtError> {
+    match *value {
+        Value::Double(number) => Ok(number),
+        Value::Float(number) => Ok(f64::from(number)),
+        Value::Int(number) => Ok(f64::from(number)),
+        _ => Err(PtError::UnexpectedReply(format!(
+            "{what} should be a number, got {value:?}"
+        ))),
+    }
+}
+
+pub(crate) fn expect_bool(value: &Value, what: &str) -> Result<bool, PtError> {
+    value.as_bool().ok_or_else(|| {
+        PtError::UnexpectedReply(format!("{what} should be true or false, got {value:?}"))
+    })
 }
 
 pub(crate) fn expect_integer(value: &Value, what: &str) -> Result<i64, PtError> {
@@ -84,7 +108,12 @@ mod tests {
             class: "Device".into(),
             message: "IPC Cache entry: ".into(),
         };
-        assert!(matches!(PtError::from(remote), PtError::Rejected(_)));
+        assert_eq!(PtError::from(remote), PtError::NotFound("Device".into()));
+        let refused = ptmp::Error::Remote {
+            class: "Network".into(),
+            message: r#"IPC call "x" not found"#.into(),
+        };
+        assert!(matches!(PtError::from(refused), PtError::Rejected(_)));
         assert!(matches!(
             PtError::from(ptmp::Error::Closed),
             PtError::Unreachable(_)
