@@ -229,7 +229,7 @@ mod tests {
         desktop::Desktop,
         features::devices::{AddDeviceRequest, add, list},
         packet_tracer::{PtError, scripted::ScriptedPacketTracer},
-        testing::{Canvas, FakeDesktop},
+        testing::{Canvas, FakeDesktop, absolute},
     };
 
     #[tokio::test]
@@ -329,10 +329,11 @@ mod tests {
     async fn saves_opens_and_clears_without_dialogs() {
         let (_canvas, packet_tracer) = canvas();
         add_router(&packet_tracer, "R1").await;
-        let saved = save(&packet_tracer, &save_request(Some("/labs/gamc.pkt")))
+        let lab = absolute("/labs/gamc.pkt");
+        let saved = save(&packet_tracer, &save_request(Some(&lab)))
             .await
             .unwrap();
-        assert_eq!(saved.path, "/labs/gamc.pkt");
+        assert_eq!(saved.path, lab);
         assert!(saved.bytes > 0);
 
         add_router(&packet_tracer, "R2").await;
@@ -347,7 +348,7 @@ mod tests {
         let opened = open(
             &packet_tracer,
             &OpenRequest {
-                path: "/labs/gamc.pkt".into(),
+                path: lab,
                 save_current_to: None,
             },
         )
@@ -360,7 +361,8 @@ mod tests {
     async fn keeps_current_work_when_asked_before_opening() {
         let (_canvas, packet_tracer) = canvas();
         add_router(&packet_tracer, "R1").await;
-        save(&packet_tracer, &save_request(Some("/labs/a.pkt")))
+        let (lab, draft_path) = (absolute("/labs/a.pkt"), absolute("/labs/draft.pkt"));
+        save(&packet_tracer, &save_request(Some(&lab)))
             .await
             .unwrap();
         new_network(&packet_tracer, &NewRequest::default())
@@ -371,17 +373,17 @@ mod tests {
         let opened = open(
             &packet_tracer,
             &OpenRequest {
-                path: "/labs/a.pkt".into(),
-                save_current_to: Some("/labs/draft.pkt".into()),
+                path: lab,
+                save_current_to: Some(draft_path.clone()),
             },
         )
         .await
         .unwrap();
-        assert_eq!(opened.saved_previous.unwrap().path, "/labs/draft.pkt");
+        assert_eq!(opened.saved_previous.unwrap().path, draft_path);
         let draft = open(
             &packet_tracer,
             &OpenRequest {
-                path: "/labs/draft.pkt".into(),
+                path: draft_path,
                 save_current_to: None,
             },
         )
@@ -395,19 +397,17 @@ mod tests {
         let (_canvas, packet_tracer) = canvas();
         let never_saved = save(&packet_tracer, &save_request(None)).await.unwrap_err();
         assert!(never_saved.to_string().contains("never been saved"));
+        let gone = absolute("/labs/missing.pkt");
         let missing = open(
             &packet_tracer,
             &OpenRequest {
-                path: "/labs/missing.pkt".into(),
+                path: gone.clone(),
                 save_current_to: None,
             },
         )
         .await
         .unwrap_err();
-        assert_eq!(
-            missing,
-            PtError::NotFound("file `/labs/missing.pkt`".into())
-        );
+        assert_eq!(missing, PtError::NotFound(format!("file `{gone}`")));
         assert!(
             save(&packet_tracer, &save_request(Some("relative.pkt")))
                 .await

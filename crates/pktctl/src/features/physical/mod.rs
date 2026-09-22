@@ -763,7 +763,7 @@ mod tests {
         let logical = set_background(
             &packet_tracer,
             &BackgroundRequest {
-                image: "/tmp/plano.png".into(),
+                image: crate::testing::absolute("/tmp/plano.png"),
                 ..BackgroundRequest::default()
             },
         )

@@ -10,6 +10,7 @@ default:
       - .cargo-home/
   before_script:
     - export CARGO_HOME="$CI_PROJECT_DIR/.cargo-home"
+    - apt-get update && apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev libwayland-dev libxkbcommon-dev pkg-config
     - rustup component add rustfmt clippy
 
 .on_merge_requests_and_main:
@@ -41,5 +42,8 @@ msrv:
   image: rust:1.88.0
   variables:
     RUSTUP_TOOLCHAIN: "1.88.0"
+  before_script:
+    - export CARGO_HOME="$CI_PROJECT_DIR/.cargo-home"
+    - apt-get update && apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev libwayland-dev libxkbcommon-dev pkg-config
   script:
     - cargo build --workspace --all-features

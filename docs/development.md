@@ -81,6 +81,19 @@ Run a single test with `cargo test -p pktctl --test live -- --ignored <name>`.
 - Conventional commit messages, atomic commits.
 - Merge with `git merge --no-ff` so each branch stays visible in history.
 
+## Building on Linux
+
+`screenshot` captures the Packet Tracer window with
+[xcap](https://crates.io/crates/xcap), which links against the desktop
+libraries. On Debian and Ubuntu:
+
+```bash
+sudo apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev \
+    libwayland-dev libxkbcommon-dev pkg-config
+```
+
+macOS and Windows need nothing extra.
+
 ## Continuous integration
 
 `make check` is what CI runs. Both pipelines are kept in step:

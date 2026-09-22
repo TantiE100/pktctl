@@ -216,13 +216,14 @@ fn network_path(path: &str) -> Result<String, PtError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::absolute;
 
     #[test]
     fn accepts_only_absolute_packet_tracer_files() {
-        assert!(network_path("/tmp/lab.pkt").is_ok());
-        assert!(network_path("/tmp/activity.PKA").is_ok());
+        assert!(network_path(&absolute("/tmp/lab.pkt")).is_ok());
+        assert!(network_path(&absolute("/tmp/activity.PKA")).is_ok());
         assert!(network_path("lab.pkt").is_err());
-        assert!(network_path("/tmp/lab.txt").is_err());
-        assert!(network_path("/tmp/lab").is_err());
+        assert!(network_path(&absolute("/tmp/lab.txt")).is_err());
+        assert!(network_path(&absolute("/tmp/lab")).is_err());
     }
 }
