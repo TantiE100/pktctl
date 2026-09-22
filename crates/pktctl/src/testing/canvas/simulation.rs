@@ -27,6 +27,7 @@ pub(super) struct Simulation {
     clock: i64,
     frames: Vec<Frame>,
     pending: Vec<(String, String)>,
+    current: usize,
 }
 
 pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote> {
@@ -56,6 +57,8 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
         ("getCurrentSimTime", []) => no_args(step, CLASS).map(|()| Value::Long(simulation.clock)),
         ("getFrameInstanceCount", []) => no_args(step, CLASS)
             .map(|()| Value::Int(i32::try_from(simulation.frames.len()).unwrap_or(i32::MAX))),
+        ("getCurrentFrameInstanceIndex", []) => no_args(step, CLASS)
+            .map(|()| Value::Int(i32::try_from(simulation.current).unwrap_or(i32::MAX))),
         ("forward", []) => {
             no_args(step, CLASS)?;
             simulation.clock += 1;
@@ -70,11 +73,17 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
                     accepted: true,
                 });
             }
+            simulation.current = simulation.frames.len().saturating_sub(1);
             Ok(Value::Void)
         }
-        ("backward", []) => no_args(step, CLASS).map(|()| Value::Void),
+        ("backward", []) => {
+            no_args(step, CLASS)?;
+            simulation.current = simulation.current.saturating_sub(1);
+            Ok(Value::Void)
+        }
         ("resetSimulation", []) => {
             no_args(step, CLASS)?;
+            simulation.current = 0;
             simulation.frames.clear();
             simulation.pending.clear();
             Ok(Value::Void)

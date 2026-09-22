@@ -120,8 +120,8 @@ impl Snapshot {
             .iter()
             .find(|node| !node.is_device() && node.path == wanted)
             .ok_or_else(|| {
-                PtError::NotFound(format!(
-                    "location `{path}`; call list_locations to see the paths"
+                PtError::InvalidInput(format!(
+                    "location `{path}` not found; call list_locations to see the paths"
                 ))
             })
     }

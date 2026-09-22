@@ -13,7 +13,7 @@ use crate::{
     server::PktctlServer,
 };
 
-pub use text::html_to_text;
+pub use text::{html_to_text, without_inline_images};
 
 const MILLISECONDS: i64 = 1000;
 
@@ -61,7 +61,8 @@ pub struct Instructions {
     pub pages: i64,
     /// The page as readable text.
     pub text: String,
-    /// The page as Packet Tracer stores it.
+    /// The page as Packet Tracer stores it, with embedded images replaced by
+    /// `data:,image-removed` so they do not flood the reply.
     pub html: String,
 }
 
@@ -134,9 +135,7 @@ pub async fn unlock<P: PacketTracer>(
         .call(active_file().method("confirmPassword", [Value::qstring(&request.password)]))
         .await?;
     if !expect_bool(&accepted, "confirmPassword")? {
-        return Err(PtError::Rejected(
-            "Packet Tracer did not accept that password".into(),
-        ));
+        return Err(PtError::Rejected("wrong password for this activity".into()));
     }
     status(packet_tracer).await
 }
@@ -248,7 +247,7 @@ pub async fn instructions<P: PacketTracer>(
         page,
         pages,
         text: html_to_text(&html),
-        html,
+        html: without_inline_images(&html),
     })
 }
 

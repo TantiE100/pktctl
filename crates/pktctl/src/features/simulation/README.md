@@ -9,7 +9,7 @@ hop with Packet Tracer's own explanations.
 |---|---|
 | `simulation_mode` | `{ "on": true }` for Simulation, `false` for Realtime. Returns the mode, the simulation clock and the number of recorded events. |
 | `add_pdu` | The *Add Simple PDU* button: an ICMP echo from `source` to `destination`. Sent at once in Realtime; queued in Simulation. |
-| `simulation_step` | `forward` (*Capture/Forward*), `back`, or `reset` the event list; `times` repeats forward/back up to 200. |
+| `simulation_step` | `forward` (*Capture/Forward*), `back`, or `reset` the event list; `times` repeats forward/back up to 200. The reply's `current_event` is where the simulation stands: `back` moves it and keeps the events and the clock. |
 | `list_simulation_events` | The event list, filtered by `protocols` and `device`, newest last, optionally with each step's decisions. |
 
 ```json

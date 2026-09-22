@@ -4,6 +4,7 @@ use crate::{
     features::{
         devices::{list, remove},
         paths::app_window,
+        power::fast_forward,
         workspace::{OpenRequest, open},
     },
     packet_tracer::{PacketTracer, PtError},
@@ -14,7 +15,8 @@ static SCRATCH_FILES: AtomicUsize = AtomicUsize::new(0);
 
 /// Takes the open network as `.pkt` bytes straight from Packet Tracer, applies `edit`
 /// to its XML, writes the result to a new temporary file and opens that, removing the
-/// power units Packet Tracer adds on open. The user's own file is never written.
+/// power units Packet Tracer adds on open, and fast forwards time so spanning tree and
+/// DHCP settle again after the reload. The user's own file is never written.
 pub(crate) async fn edit_saved_network<P, F>(packet_tracer: &P, edit: F) -> Result<String, PtError>
 where
     P: PacketTracer,
@@ -57,6 +59,7 @@ where
             remove(packet_tracer, &device.name).await?;
         }
     }
+    fast_forward(packet_tracer).await?;
     Ok(path)
 }
 
