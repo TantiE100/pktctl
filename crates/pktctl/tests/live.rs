@@ -783,3 +783,375 @@ async fn power_cycles_everything_without_a_dialog() {
     ok(&mut client, "status", json!({})).await;
     remove_leftovers(&mut client).await;
 }
+
+const SERVER: &str = "E2E-SRV";
+const SERVER_IP: &str = "192.168.70.5";
+
+async fn office(client: &mut McpClient) {
+    remove_leftovers(client).await;
+    for (model, name) in [
+        ("Server-PT", SERVER),
+        ("2960-24TT", SWITCH),
+        ("PC-PT", PC_A),
+    ] {
+        ok(
+            client,
+            "add_device",
+            json!({ "model": model, "name": name }),
+        )
+        .await;
+    }
+    for (device, port) in [(SERVER, "FastEthernet0/1"), (PC_A, "FastEthernet0/2")] {
+        ok(
+            client,
+            "connect",
+            json!({ "device_a": SWITCH, "port_a": port, "device_b": device, "port_b": "FastEthernet0" }),
+        )
+        .await;
+    }
+    for (device, ip) in [(SERVER, SERVER_IP), (PC_A, "192.168.70.20")] {
+        ok(
+            client,
+            "configure_host",
+            json!({ "device": device, "ip": ip, "mask": "255.255.255.0", "dns": SERVER_IP }),
+        )
+        .await;
+    }
+    ok(
+        client,
+        "configure_dns_server",
+        json!({ "device": SERVER, "records": [{ "name": "www.e2e.bo", "type": "A", "value": SERVER_IP }] }),
+    )
+    .await;
+    ok(
+        client,
+        "set_web_page",
+        json!({ "device": SERVER, "url": "index.html", "contents": "<h1>E2E</h1><p>pagina</p>" }),
+    )
+    .await;
+    for user in ["ana", "luis"] {
+        ok(
+            client,
+            "add_server_user",
+            json!({ "device": SERVER, "service": "email", "username": user, "password": "cisco", "domain": "e2e.bo" }),
+        )
+        .await;
+    }
+    ok(client, "fast_forward", json!({})).await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
+async fn browses_and_mails_between_hosts() {
+    let mut client = live_client().await;
+    office(&mut client).await;
+
+    let page = ok(
+        &mut client,
+        "browse_web",
+        json!({ "device": PC_A, "url": "www.e2e.bo" }),
+    )
+    .await;
+    assert_eq!(
+        (page["status"].as_str(), page["server"].as_str()),
+        (Some("ok"), Some(SERVER_IP)),
+        "{page}"
+    );
+    assert_eq!(page["text"], "E2E\npagina");
+    let unknown = ok(
+        &mut client,
+        "browse_web",
+        json!({ "device": PC_A, "url": "www.nadie.bo" }),
+    )
+    .await;
+    assert_eq!(unknown["status"], "host_not_found", "{unknown}");
+
+    for (device, user) in [(PC_A, "ana"), (SERVER, "luis")] {
+        ok(
+            &mut client,
+            "configure_email",
+            json!({ "device": device, "name": user, "email": format!("{user}@e2e.bo"), "username": user,
+                    "password": "cisco", "incoming_server": SERVER_IP, "outgoing_server": SERVER_IP }),
+        )
+        .await;
+    }
+    let mail =
+        json!({ "device": PC_A, "to": "luis@e2e.bo", "subject": "Informe", "body": "Adjunto" });
+    let mut sent = client.call_tool("send_email", mail.clone()).await;
+    if sent["isError"] == true {
+        sent = client.call_tool("send_email", mail).await;
+    }
+    assert_ne!(sent["isError"], true, "{sent}");
+    let inbox = ok(&mut client, "receive_email", json!({ "device": SERVER })).await;
+    assert_eq!(inbox["mails"][0]["subject"], "Informe", "{inbox}");
+    assert_eq!(inbox["mails"][0]["from"], "ana@e2e.bo");
+    remove_leftovers(&mut client).await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
+async fn configures_host_files_ipv6_and_firewall() {
+    let mut client = live_client().await;
+    office(&mut client).await;
+
+    ok(
+        &mut client,
+        "host_files",
+        json!({ "device": PC_A, "action": "write", "name": "e2e.txt", "text": "VLAN 10" }),
+    )
+    .await;
+    let read = ok(
+        &mut client,
+        "host_files",
+        json!({ "device": PC_A, "action": "read", "name": "e2e.txt" }),
+    )
+    .await;
+    assert_eq!(read["text"], "VLAN 10");
+    let dir = ok(
+        &mut client,
+        "run_host_command",
+        json!({ "device": PC_A, "command": "dir" }),
+    )
+    .await;
+    assert!(dir["output"].as_str().unwrap().contains("e2e.txt"), "{dir}");
+    ok(
+        &mut client,
+        "host_files",
+        json!({ "device": PC_A, "action": "delete", "name": "e2e.txt" }),
+    )
+    .await;
+
+    let ipv6 = ok(
+        &mut client,
+        "configure_host_ipv6",
+        json!({ "device": PC_A, "address": "2001:db8:70::20/64", "gateway": "fe80::1" }),
+    )
+    .await;
+    assert_eq!(ipv6["addresses"], json!(["2001:db8:70::20/64"]));
+    let shown = ok(
+        &mut client,
+        "run_host_command",
+        json!({ "device": PC_A, "command": "ipconfig" }),
+    )
+    .await;
+    assert!(
+        shown["output"]
+            .as_str()
+            .unwrap()
+            .contains("2001:DB8:70::20"),
+        "{shown}"
+    );
+    let firewall = ok(
+        &mut client,
+        "set_host_firewall",
+        json!({ "device": PC_A, "ipv4": true, "ipv6": true }),
+    )
+    .await;
+    assert_eq!(
+        (firewall["ipv4"].as_bool(), firewall["ipv6"].as_bool()),
+        (Some(true), Some(true))
+    );
+    ok(
+        &mut client,
+        "set_host_firewall",
+        json!({ "device": PC_A, "ipv4": false, "ipv6": false }),
+    )
+    .await;
+    remove_leftovers(&mut client).await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
+async fn connects_the_vpn_client() {
+    let mut client = live_client().await;
+    office(&mut client).await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2811", "name": ROUTER }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "connect",
+        json!({ "device_a": ROUTER, "port_a": "FastEthernet0/0", "device_b": SWITCH, "port_b": "FastEthernet0/3" }),
+    )
+    .await;
+    let configured = ok(
+        &mut client,
+        "configure_ios",
+        json!({ "device": ROUTER, "commands": [
+            "interface FastEthernet0/0", "ip address 192.168.70.2 255.255.255.0", "no shutdown", "exit",
+            "aaa new-model", "aaa authentication login VPNAUTH local",
+            "aaa authorization network VPNGRP local", "username vpnuser password vpnpass",
+            "ip local pool VPNPOOL 10.70.0.10 10.70.0.50",
+            "crypto isakmp policy 10", "encryption aes 256", "hash sha", "authentication pre-share",
+            "group 2", "exit",
+            "crypto isakmp client configuration group VPNGROUP", "key vpnkey", "pool VPNPOOL", "exit",
+            "crypto ipsec transform-set TS esp-aes esp-sha-hmac",
+            "crypto dynamic-map DYN 10", "set transform-set TS", "reverse-route", "exit",
+            "crypto map CMAP client authentication list VPNAUTH",
+            "crypto map CMAP isakmp authorization list VPNGRP",
+            "crypto map CMAP client configuration address respond",
+            "crypto map CMAP 10 ipsec-isakmp dynamic DYN",
+            "interface FastEthernet0/0", "crypto map CMAP"
+        ] }),
+    )
+    .await;
+    assert_eq!(configured["completed"], true, "{configured}");
+    ok(&mut client, "fast_forward", json!({})).await;
+    ping(&mut client, PC_A, "192.168.70.2").await;
+
+    let up = ok(
+        &mut client,
+        "vpn_client",
+        json!({ "device": PC_A, "action": "connect", "server": "192.168.70.2", "group": "VPNGROUP",
+                "group_key": "vpnkey", "username": "vpnuser", "password": "vpnpass" }),
+    )
+    .await;
+    assert_eq!(up["connected"], true, "{up}");
+    assert!(
+        up["tunnel_ip"].as_str().unwrap().starts_with("10.70.0."),
+        "{up}"
+    );
+    let down = ok(
+        &mut client,
+        "vpn_client",
+        json!({ "device": PC_A, "action": "disconnect" }),
+    )
+    .await;
+    assert_eq!(down["connected"], false);
+    remove_leftovers(&mut client).await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
+async fn answers_console_questions() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2911", "name": ROUTER }),
+    )
+    .await;
+    let asked = ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "copy running-config startup-config" }),
+    )
+    .await;
+    assert_eq!(
+        asked["question"], "Destination filename [startup-config]?",
+        "{asked}"
+    );
+    let blocked = client
+        .call_tool(
+            "run_cli",
+            json!({ "device": ROUTER, "command": "show clock" }),
+        )
+        .await;
+    assert_eq!(blocked["isError"], true, "{blocked}");
+    let saved = ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "", "mode": "current" }),
+    )
+    .await;
+    assert_eq!(saved["finished"], true, "{saved}");
+
+    let reload = ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "reload" }),
+    )
+    .await;
+    assert_eq!(reload["question"], "Proceed with reload? [confirm]");
+    ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "", "mode": "current" }),
+    )
+    .await;
+    let uptime = ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "show version | include uptime", "timeout_secs": 60 }),
+    )
+    .await;
+    assert!(
+        uptime["output"].as_str().unwrap().contains("uptime is"),
+        "{uptime}"
+    );
+    remove_leftovers(&mut client).await;
+}
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer"]
+async fn removes_physical_locations() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    loop {
+        let existing = ok(&mut client, "list_locations", json!({})).await;
+        let Some(stale) = existing["locations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|location| location["path"].as_str())
+            .find(|path| path.starts_with("E2E") && !path.contains('/'))
+            .map(str::to_owned)
+        else {
+            break;
+        };
+        ok(&mut client, "remove_location", json!({ "path": stale })).await;
+    }
+    let city = ok(&mut client, "add_location", json!({ "kind": "city" })).await;
+    let city_path = city["path"].as_str().unwrap().to_owned();
+    let named = ok(
+        &mut client,
+        "rename_location",
+        json!({ "path": city_path, "name": "E2E Ciudad" }),
+    )
+    .await;
+    assert_eq!(named["location"]["path"], "E2E Ciudad");
+    let closet = ok(
+        &mut client,
+        "add_location",
+        json!({ "kind": "wiring_closet", "inside": "E2E Ciudad" }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "PC-PT", "name": PC_A }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "move_to_location",
+        json!({ "device": PC_A, "into": closet["path"] }),
+    )
+    .await;
+    let busy = client
+        .call_tool("remove_location", json!({ "path": "E2E Ciudad" }))
+        .await;
+    assert_eq!(busy["isError"], true, "{busy}");
+    remove_leftovers(&mut client).await;
+
+    let removed = ok(
+        &mut client,
+        "remove_location",
+        json!({ "path": "E2E Ciudad" }),
+    )
+    .await;
+    assert_eq!(removed["removed"], "E2E Ciudad");
+    let locations = ok(&mut client, "list_locations", json!({})).await;
+    assert!(
+        !locations["locations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|location| location["path"].as_str().unwrap().starts_with("E2E")),
+        "{locations}"
+    );
+}

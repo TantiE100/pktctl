@@ -44,9 +44,10 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
   when leaving a rack, and `moveIntoObject(name)` enters a sibling. The tool
   climbs to the common ancestor of the source and the destination, then enters
   each remaining level by name, and finally reads the tree back to confirm.
-- **Racks**: a device moved into a wiring closet is mounted in its rack. If the
-  closet has none, Packet Tracer creates one together with a new Power
-  Distribution Device.
+- **Racks and tables**: a device moved into a wiring closet lands where
+  Packet Tracer puts it: in the rack of the default closets, which gains a new
+  Power Distribution Device when it has none, or on the table of a closet made
+  with `add_location` (verified on 9.0.1). `now_in` names the exact place.
 - **Device objects are recreated** on every move, with a new uuid, and take the
   device's name. The tool therefore always reaches a device through
   `network().getDevice(name).getPhysicalObject()` and locations by uuid,

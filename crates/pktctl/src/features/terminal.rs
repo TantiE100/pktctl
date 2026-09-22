@@ -211,9 +211,18 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
                     self.press(SPACE).await?;
                 }
                 COMMAND_ENDED => {
+                    let status = ended_status(&event)?;
+                    if let Some(question) = pending_question(&output) {
+                        return Ok(TerminalRun {
+                            finished: false,
+                            status: None,
+                            output,
+                            question: Some(question),
+                        });
+                    }
                     return Ok(TerminalRun {
                         finished: true,
-                        status: Some(ended_status(&event)?),
+                        status: Some(status),
                         output,
                         question: None,
                     });
@@ -341,5 +350,26 @@ mod tests {
         assert_eq!(timeout(Some(300)).unwrap(), Duration::from_secs(300));
         assert!(timeout(Some(0)).is_err());
         assert!(timeout(Some(301)).is_err());
+    }
+
+    #[test]
+    fn tells_questions_from_prompts() {
+        for question in [
+            "Proceed with reload? [confirm]",
+            "Destination filename [startup-config]? ",
+            "ACCEPT? [yes/no]: ",
+            "Password: ",
+            "Address or name of remote host []?",
+        ] {
+            let output = format!("Building configuration...\n{question}");
+            assert_eq!(
+                pending_question(&output).as_deref(),
+                Some(question.trim()),
+                "{question}"
+            );
+        }
+        for prompt in ["R1#", "R1(config-if)#", "Switch>", "C:\\>", "[OK]\nR1#"] {
+            assert_eq!(pending_question(prompt), None, "{prompt}");
+        }
     }
 }

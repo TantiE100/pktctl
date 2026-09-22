@@ -103,7 +103,7 @@ impl<P: PacketTracer> PktctlServer<P> {
         description = "Move a device, or a whole location such as a wiring closet, to another \
                        place in the physical workspace, for example a switch into \
                        `Home City/Corporate Office/Main Wiring Closet`. Devices moved into a \
-                       wiring closet are mounted in its rack.",
+                       wiring closet land on its rack or table.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

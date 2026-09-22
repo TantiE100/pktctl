@@ -10,6 +10,9 @@ use crate::{
 
 const MAX_CLIMB: usize = 12;
 const CONTAINER_KINDS_FOR_CLOSETS: &[&str] = &["universe", "city", "building"];
+/// Where Packet Tracer puts a device dropped into a wiring closet: the rack of the
+/// default closets, the table of new ones.
+const FURNITURE: &[&str] = &["rack", "stackable_table", "old_table", "shelf"];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -43,7 +46,8 @@ pub struct MoveRequest {
     #[serde(default)]
     pub location: Option<String>,
     /// Path of the destination, for example `Home City/Corporate Office/Main Wiring Closet`.
-    /// Devices moved into a wiring closet are mounted in its rack.
+    /// Devices moved into a wiring closet land on its rack or table, as Packet Tracer
+    /// places them.
     pub into: String,
     /// Optional position inside the destination.
     #[serde(default)]
@@ -159,9 +163,9 @@ pub async fn move_to_location<P: PacketTracer>(
     };
     let now = moved.parent.clone().unwrap_or_default();
     let landed = now == target.path
-        || finished
-            .by_path(&now)
-            .is_ok_and(|node| node.kind == "rack" && node.parent.as_deref() == Some(&target.path));
+        || finished.by_path(&now).is_ok_and(|node| {
+            FURNITURE.contains(&node.kind.as_str()) && node.parent.as_deref() == Some(&target.path)
+        });
     if !landed {
         return Err(PtError::Rejected(format!(
             "Packet Tracer left `{}` in `{now}` instead of `{}`",
