@@ -16,7 +16,7 @@ which is exactly when it is needed.
   "steps": [
     "Open Packet Tracer and choose Extensions > IPC > Configure Apps.",
     "Click Add and select /Users/me/.config/pktctl/pktctl.pta.",
-    "Click Ok. The registration survives restarts; call status to confirm."
+    "Click Ok and call status to confirm. Quit Packet Tracer normally once (Cmd+Q or File > Exit) so it saves the registration."
   ]
 }
 ```
@@ -35,4 +35,7 @@ which is exactly when it is needed.
    encrypted `.pta`.
 
 The last click, **Add** in Packet Tracer's dialog, stays with the user: Packet
-Tracer exposes no API to register an app.
+Tracer exposes no API to register an app and does not pick `.pta` files up by
+itself (see [ExApp registration](../../../../../docs/features/exapp-registration.md#why-there-is-no-silent-registration)).
+Packet Tracer saves the registration only when it quits normally, so the
+steps end with quitting it once.
