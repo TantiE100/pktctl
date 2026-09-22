@@ -78,7 +78,10 @@ pub async fn configure<P: PacketTracer>(
         results.push(CommandOutcome {
             command: command.clone(),
             status: reply.status,
-            output: tidy(&reply.output),
+            output: match tidy(&reply.output) {
+                output if output.is_empty() => reply.status.explanation().to_owned(),
+                output => output,
+            },
         });
         if !accepted {
             break;
@@ -226,6 +229,7 @@ mod tests {
         assert!(!result.completed && !result.saved);
         assert_eq!(result.applied, 1);
         assert_eq!(result.results[1].status, CommandStatus::Invalid);
+        assert!(result.results[1].output.contains("Invalid input"));
         let typed: Vec<_> = canvas
             .cli_history("R1")
             .into_iter()

@@ -733,3 +733,53 @@ async fn captures_the_physical_workspace() {
     .await;
     assert_eq!(mode["value"], false, "the logical view is restored");
 }
+
+#[tokio::test]
+#[ignore = "needs a running Packet Tracer; power cycles every device in the open network"]
+async fn power_cycles_everything_without_a_dialog() {
+    let mut client = live_client().await;
+    remove_leftovers(&mut client).await;
+    ok(
+        &mut client,
+        "add_device",
+        json!({ "model": "2911", "name": ROUTER }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "configure_ios",
+        json!({ "device": ROUTER, "commands": ["hostname SAVED"], "save": true }),
+    )
+    .await;
+    ok(
+        &mut client,
+        "configure_ios",
+        json!({ "device": ROUTER, "commands": ["hostname UNSAVED"] }),
+    )
+    .await;
+
+    let cycled = ok(&mut client, "power_cycle_all", json!({})).await;
+    assert!(
+        cycled["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|name| name == ROUTER),
+        "{cycled}"
+    );
+    let prompt = ok(
+        &mut client,
+        "run_cli",
+        json!({ "device": ROUTER, "command": "show running-config | include hostname" }),
+    )
+    .await;
+    assert!(
+        prompt["output"]
+            .as_str()
+            .unwrap()
+            .contains("hostname SAVED"),
+        "{prompt}"
+    );
+    ok(&mut client, "status", json!({})).await;
+    remove_leftovers(&mut client).await;
+}

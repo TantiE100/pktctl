@@ -48,7 +48,10 @@ if they get in the way.
 The IPC API has no image of the physical workspace, so the last three capture
 Packet Tracer's own window through the operating system with
 [xcap](https://crates.io/crates/xcap) (macOS, Windows, Linux). Only that
-window is captured, never the screen. On macOS the app that runs pktctl needs
+window is captured, never the screen. Dialogs are separate windows, so
+pktctl paints every Packet Tracer window that sits in front of the main one
+onto it; a modal dialog, which stops Packet Tracer from answering IPC calls,
+therefore shows up in a `window` capture even while every other tool times out. On macOS the app that runs pktctl needs
 the Screen Recording permission (System Settings > Privacy & Security); the
 error says so if it is missing. The capture waits 0.8 seconds after switching
 views so Packet Tracer can redraw, and the view you had is restored afterwards.

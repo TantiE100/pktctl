@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     features::{
-        devices::{describe, ready_console},
+        devices::{describe, list, ready_console},
         paths::{app_window, device},
     },
     packet_tracer::{PacketTracer, PtError, expect_bool, kinds::runs_ios},
@@ -24,6 +24,12 @@ pub struct PowerRequest {
 pub struct PowerState {
     pub device: String,
     pub on: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct PowerCycled {
+    /// Devices that were on and have been switched off and back on.
+    pub devices: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -79,15 +85,34 @@ pub async fn fast_forward<P: PacketTracer>(packet_tracer: &P) -> Result<Done, Pt
     Ok(Done { done: true })
 }
 
-pub async fn power_cycle_all<P: PacketTracer>(packet_tracer: &P) -> Result<Done, PtError> {
-    packet_tracer
-        .call(
-            app_window()
-                .method("getRealtimeToolbar", [])
-                .method("resetNetwork", []),
+/// Does what the Power Cycle Devices button does, one device at a time: the button
+/// itself opens a confirmation dialog that blocks every IPC call until someone
+/// answers it.
+pub async fn power_cycle_all<P: PacketTracer>(packet_tracer: &P) -> Result<PowerCycled, PtError> {
+    let mut cycled = Vec::new();
+    for listed in list(packet_tracer).await?.devices {
+        let powered = packet_tracer
+            .call(device(&listed.name).method("getPower", []))
+            .await?;
+        if !expect_bool(&powered, "getPower")? {
+            continue;
+        }
+        packet_tracer
+            .call(device(&listed.name).method("setPower", [Value::Bool(false)]))
+            .await?;
+        cycled.push(listed.name);
+    }
+    for name in &cycled {
+        set_power(
+            packet_tracer,
+            &PowerRequest {
+                device: name.clone(),
+                on: true,
+            },
         )
         .await?;
-    Ok(Done { done: true })
+    }
+    Ok(PowerCycled { devices: cycled })
 }
 
 #[tool_router(router = power_router, vis = "pub(crate)")]
@@ -134,15 +159,17 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "power_cycle_all",
-        description = "Press the Power Cycle Devices button: every device reloads. Unsaved \
-                       configuration on every router and switch is lost.",
+        description = "Power cycle every device that is on, like the Power Cycle Devices button \
+                       but without its confirmation dialog: every device reloads and unsaved \
+                       configuration on every router and switch is lost. Returns the devices \
+                       cycled.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
             open_world_hint = false
         )
     )]
-    async fn power_cycle_all_tool(&self) -> Result<Json<Done>, String> {
+    async fn power_cycle_all_tool(&self) -> Result<Json<PowerCycled>, String> {
         power_cycle_all(self.packet_tracer())
             .await
             .map(Json)
@@ -209,14 +236,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn presses_the_realtime_buttons() {
+    async fn fast_forward_presses_the_realtime_button() {
         let canvas = Arc::new(Canvas::new());
         let packet_tracer = ScriptedPacketTracer::on_canvas(Arc::clone(&canvas));
         assert!(fast_forward(&packet_tracer).await.unwrap().done);
-        assert!(power_cycle_all(&packet_tracer).await.unwrap().done);
-        assert_eq!(
-            canvas.realtime_presses(),
-            ["fastForwardTime", "resetNetwork"]
-        );
+        assert_eq!(canvas.realtime_presses(), ["fastForwardTime"]);
+    }
+
+    #[tokio::test]
+    async fn power_cycle_all_reloads_what_is_on_without_the_dialog_button() {
+        let canvas = Arc::new(Canvas::new());
+        let packet_tracer = ScriptedPacketTracer::on_canvas(Arc::clone(&canvas));
+        for (model, name) in [("2911", "R1"), ("2960-24TT", "S1"), ("PC-PT", "PC1")] {
+            let request = AddDeviceRequest {
+                model: model.into(),
+                name: Some(name.into()),
+                ..AddDeviceRequest::default()
+            };
+            add(&packet_tracer, &request).await.unwrap();
+        }
+        set_power(
+            &packet_tracer,
+            &PowerRequest {
+                device: "PC1".into(),
+                on: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let cycled = power_cycle_all(&packet_tracer).await.unwrap();
+        assert_eq!(cycled.devices, ["R1", "S1"]);
+        assert_eq!(canvas.is_powered("R1"), Some(true));
+        assert_eq!(canvas.is_powered("PC1"), Some(false));
+        assert_eq!(canvas.console_prompt("R1").as_deref(), Some("Router>"));
+        assert!(canvas.realtime_presses().is_empty());
     }
 }

@@ -50,6 +50,11 @@ pub enum PtError {
     MissingPrivilege(String),
     #[error("Packet Tracer sent an unexpected reply: {0}")]
     UnexpectedReply(String),
+    #[error(
+        "{0}; Packet Tracer may be waiting for someone to answer a dialog: call screenshot \
+         with view `window` to see it and ask the user to close it"
+    )]
+    Busy(String),
     #[error("{0}")]
     InvalidInput(String),
     #[error("{0}")]
@@ -63,6 +68,7 @@ impl From<ptmp::Error> for PtError {
                 Self::Unreachable(error.to_string())
             }
             ptmp::Error::AuthRejected { .. } => Self::NotRegistered(error.to_string()),
+            ptmp::Error::Timeout(_) => Self::Busy(error.to_string()),
             ptmp::Error::Remote { class, message } if message.starts_with(MISSING_OBJECT) => {
                 Self::NotFound(class)
             }
@@ -127,6 +133,8 @@ mod tests {
             PtError::from(ptmp::Error::Closed),
             PtError::Unreachable(_)
         ));
+        let stuck = PtError::from(ptmp::Error::Timeout(std::time::Duration::from_secs(30)));
+        assert!(stuck.to_string().contains("dialog"));
         let rejected = ptmp::Error::AuthRejected {
             app_id: "app".into(),
         };
