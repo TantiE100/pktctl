@@ -7,7 +7,7 @@ mod elements;
 mod physical;
 mod wireless;
 
-pub use physical::{PhysicalNode, add_building, physical_nodes, rename_node};
+pub use physical::{PhysicalNode, add_building, physical_nodes, remove_node, rename_node};
 pub use wireless::{ClientProfile, client_profile, set_client_profile};
 
 use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
@@ -33,6 +33,8 @@ pub enum PktError {
     Xml(String),
     #[error("physical location {0} is not in the file")]
     NodeNotFound(String),
+    #[error("physical location {0} cannot be removed: {1}")]
+    NodeInUse(String, String),
 }
 
 pub fn decode(file: &[u8]) -> Result<String, PktError> {

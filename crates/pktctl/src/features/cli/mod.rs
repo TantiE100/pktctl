@@ -27,7 +27,9 @@ const MODE_CHANGE_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct CliRequest {
     /// Device name exactly as shown by `list_devices`.
     pub device: String,
-    /// One IOS command, for example `show ip interface brief`.
+    /// One IOS command, for example `show ip interface brief`. To answer a question the
+    /// previous command left open (`question` in its reply), send the answer here with mode
+    /// `current`; an empty command presses Enter, which confirms `[confirm]`.
     pub command: String,
     /// Mode to run the command in. Defaults to `enable`.
     #[serde(default)]
@@ -70,9 +72,14 @@ pub async fn run<P: PacketTracer>(
 ) -> Result<TerminalRun, PtError> {
     let device_name = request.device.trim();
     let command = request.command.trim();
-    if device_name.is_empty() || command.is_empty() {
+    if device_name.is_empty() {
+        return Err(PtError::InvalidInput("device is required".into()));
+    }
+    if command.is_empty() && request.mode != CliMode::Current {
         return Err(PtError::InvalidInput(
-            "device and command are required".into(),
+            "command is required; an empty command (Enter) only answers a question, in mode \
+             `current`"
+                .into(),
         ));
     }
     let timeout = terminal::timeout(request.timeout_secs)?;
@@ -86,6 +93,21 @@ pub async fn run<P: PacketTracer>(
     }
 
     ready_console(packet_tracer, device_name).await?;
+    if request.mode != CliMode::Current {
+        let prompt = packet_tracer
+            .call(
+                device(device_name)
+                    .method("getCommandLine", [])
+                    .method("getPrompt", []),
+            )
+            .await?;
+        if let Some(question) = terminal::pending_question(prompt.as_str().unwrap_or_default()) {
+            return Err(PtError::InvalidInput(format!(
+                "`{device_name}` is waiting on `{question}`; answer it first with mode `current` \
+                 (an empty command presses Enter)"
+            )));
+        }
+    }
     let console = Terminal::open(
         packet_tracer,
         device(device_name).method("getCommandLine", []),
@@ -208,7 +230,10 @@ impl<P: PacketTracer> PktctlServer<P> {
                        its output, including commands that take time such as ping or \
                        traceroute. `status` tells whether IOS accepted the command. A command \
                        still running after `timeout_secs` is stopped with Ctrl+Shift+6 and \
-                       comes back with `finished: false` and the output so far.",
+                       comes back with `finished: false` and the output so far. When IOS asks \
+                       something ([confirm], [yes/no], Password:) the reply carries `question` \
+                       and the console keeps waiting: answer with another run_cli in mode \
+                       `current`, an empty command for Enter.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -258,6 +283,34 @@ mod tests {
             mode,
             timeout_secs: None,
         }
+    }
+
+    #[tokio::test]
+    async fn leaves_questions_open_for_an_answer() {
+        let (canvas, packet_tracer) = lab().await;
+        let asked = run(&packet_tracer, &request("reload", CliMode::Enable))
+            .await
+            .unwrap();
+        assert!(!asked.finished);
+        assert_eq!(
+            asked.question.as_deref(),
+            Some("Proceed with reload? [confirm]")
+        );
+
+        let blocked = run(&packet_tracer, &request("show clock", CliMode::Enable))
+            .await
+            .unwrap_err();
+        assert!(blocked.to_string().contains("waiting on"), "{blocked}");
+        let empty = run(&packet_tracer, &request("", CliMode::Enable))
+            .await
+            .unwrap_err();
+        assert!(matches!(empty, PtError::InvalidInput(_)), "{empty}");
+
+        let answered = run(&packet_tracer, &request("", CliMode::Current))
+            .await
+            .unwrap();
+        assert!(answered.finished && answered.question.is_none());
+        assert_eq!(canvas.console_prompt("R1").as_deref(), Some("Router>"));
     }
 
     #[tokio::test]

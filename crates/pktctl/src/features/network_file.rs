@@ -10,7 +10,7 @@ use crate::{
     packet_tracer::{PacketTracer, PtError},
 };
 
-const PDU_MODEL: &str = "Power Distribution Device";
+pub(crate) const PDU_MODEL: &str = "Power Distribution Device";
 static SCRATCH_FILES: AtomicUsize = AtomicUsize::new(0);
 
 /// Takes the open network as `.pkt` bytes straight from Packet Tracer, applies `edit`

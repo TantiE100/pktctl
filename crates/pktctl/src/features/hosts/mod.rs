@@ -1,9 +1,15 @@
+mod firewall;
+mod ipv6;
+
 use std::{net::Ipv4Addr, time::Duration};
 
 use ptmp::{Call, Value};
 use rmcp::{Json, handler::server::wrapper::Parameters, tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+pub use firewall::{FirewallRequest, FirewallState, set_firewall};
+pub use ipv6::{Ipv6Config, Ipv6Mode, Ipv6Request, configure_ipv6};
 
 use crate::{
     features::{devices::describe, paths::device},
@@ -72,31 +78,9 @@ pub async fn configure<P: PacketTracer>(
     request: &HostConfigRequest,
 ) -> Result<HostConfig, PtError> {
     let plan = plan(request)?;
-    let device_name = request.device.trim();
-    let port_name = request
-        .port
-        .as_deref()
-        .map(str::trim)
-        .filter(|port| !port.is_empty())
-        .unwrap_or(DEFAULT_PORT);
-    let target = describe(packet_tracer, device_name).await?;
-    if runs_ios(&target.kind) {
-        return Err(PtError::InvalidInput(format!(
-            "`{device_name}` is a {}; configure_host only handles end devices such as PCs and \
-             servers, use configure_ios for its interfaces",
-            target.kind
-        )));
-    }
-    let port = device(device_name).method("getPort", [Value::string(port_name)]);
-    packet_tracer
-        .call(port.clone().method("getName", []))
-        .await
-        .map_err(|error| match error {
-            PtError::NotFound(_) => {
-                PtError::NotFound(format!("port `{port_name}` on `{device_name}`"))
-            }
-            other => other,
-        })?;
+    let (device_name, port_name, port) =
+        host_port(packet_tracer, &request.device, request.port.as_deref()).await?;
+    let device_name = device_name.as_str();
 
     let host = Host {
         packet_tracer,
@@ -115,13 +99,49 @@ pub async fn configure<P: PacketTracer>(
     };
     Ok(HostConfig {
         device: device_name.to_owned(),
-        port: port_name.to_owned(),
+        port: port_name,
         dhcp,
         ip: ip.map(|ip| ip.to_string()),
         mask: mask.map(|mask| mask.to_string()),
         gateway: gateway.map(|gateway| gateway.to_string()),
         dns: dns.map(|dns| dns.to_string()),
     })
+}
+
+/// Resolves an end device's port, refusing routers and switches, which are configured
+/// through IOS. Returns the device name, the port name and the port call.
+pub(crate) async fn host_port<P: PacketTracer>(
+    packet_tracer: &P,
+    device_name: &str,
+    port: Option<&str>,
+) -> Result<(String, String, Call), PtError> {
+    let device_name = device_name.trim();
+    if device_name.is_empty() {
+        return Err(PtError::InvalidInput("device is required".into()));
+    }
+    let port_name = port
+        .map(str::trim)
+        .filter(|port| !port.is_empty())
+        .unwrap_or(DEFAULT_PORT);
+    let target = describe(packet_tracer, device_name).await?;
+    if runs_ios(&target.kind) {
+        return Err(PtError::InvalidInput(format!(
+            "`{device_name}` is a {}; this tool only handles end devices such as PCs and \
+             servers, use configure_ios for its interfaces",
+            target.kind
+        )));
+    }
+    let port = device(device_name).method("getPort", [Value::string(port_name)]);
+    packet_tracer
+        .call(port.clone().method("getName", []))
+        .await
+        .map_err(|error| match error {
+            PtError::NotFound(_) => {
+                PtError::NotFound(format!("port `{port_name}` on `{device_name}`"))
+            }
+            other => other,
+        })?;
+    Ok((device_name.to_owned(), port_name.to_owned(), port))
 }
 
 struct Host<'a, P> {
@@ -306,6 +326,50 @@ impl<P: PacketTracer> PktctlServer<P> {
             .map(Json)
             .map_err(|error| error.to_string())
     }
+
+    #[tool(
+        name = "configure_host_ipv6",
+        description = "Set the IPv6 configuration of a PC, laptop or server, like the IPv6 part \
+                       of IP Configuration: `static` with an address such as \
+                       2001:db8:10::20/64, `auto` for SLAAC, or `off`; optional gateway \
+                       (usually the router's link-local fe80::1) and DNS. Returns the addresses \
+                       Packet Tracer now has on the port.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn configure_host_ipv6_tool(
+        &self,
+        Parameters(request): Parameters<Ipv6Request>,
+    ) -> Result<Json<Ipv6Config>, String> {
+        configure_ipv6(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
+        name = "set_host_firewall",
+        description = "Switch the inbound firewall of a PC, laptop or server on or off, for IPv4 \
+                       and IPv6 separately, like its Firewall and IPv6 Firewall apps. Returns \
+                       both states.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn set_host_firewall_tool(
+        &self,
+        Parameters(request): Parameters<FirewallRequest>,
+    ) -> Result<Json<FirewallState>, String> {
+        set_firewall(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -331,6 +395,95 @@ mod tests {
             add(&packet_tracer, &request).await.unwrap();
         }
         packet_tracer
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sets_a_static_ipv6_address_and_reads_it_back() {
+        let packet_tracer = lab().await;
+        let config = configure_ipv6(
+            &packet_tracer,
+            &Ipv6Request {
+                device: "PC1".into(),
+                address: Some("2001:db8:10::20/64".into()),
+                gateway: Some("fe80::1".into()),
+                ..Ipv6Request::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(config.addresses, ["2001:db8:10::20/64"]);
+        assert_eq!(config.gateway.as_deref(), Some("fe80::1"));
+
+        let replaced = configure_ipv6(
+            &packet_tracer,
+            &Ipv6Request {
+                device: "PC1".into(),
+                address: Some("2001:db8:10::21/64".into()),
+                ..Ipv6Request::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(replaced.addresses, ["2001:db8:10::21/64"]);
+
+        let auto = configure_ipv6(
+            &packet_tracer,
+            &Ipv6Request {
+                device: "PC1".into(),
+                mode: Ipv6Mode::Auto,
+                ..Ipv6Request::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(auto.addresses.is_empty(), "auto drops the static address");
+
+        let off = configure_ipv6(
+            &packet_tracer,
+            &Ipv6Request {
+                device: "PC1".into(),
+                mode: Ipv6Mode::Off,
+                ..Ipv6Request::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(off.addresses.is_empty());
+
+        let router = configure_ipv6(
+            &packet_tracer,
+            &Ipv6Request {
+                device: "R1".into(),
+                address: Some("2001:db8::1/64".into()),
+                ..Ipv6Request::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(router.to_string().contains("configure_ios"), "{router}");
+    }
+
+    #[tokio::test]
+    async fn switches_each_firewall_independently() {
+        let packet_tracer = lab().await;
+        let request = |ipv4, ipv6| FirewallRequest {
+            device: "PC1".into(),
+            ipv4,
+            ipv6,
+            ..FirewallRequest::default()
+        };
+        let state = set_firewall(&packet_tracer, &request(Some(true), None))
+            .await
+            .unwrap();
+        assert!(state.ipv4 && !state.ipv6);
+        let state = set_firewall(&packet_tracer, &request(None, Some(true)))
+            .await
+            .unwrap();
+        assert!(state.ipv4 && state.ipv6);
+        let state = set_firewall(&packet_tracer, &request(Some(false), None))
+            .await
+            .unwrap();
+        assert!(!state.ipv4 && state.ipv6);
     }
 
     fn static_request(ip: &str, mask: &str, gateway: Option<&str>) -> HostConfigRequest {

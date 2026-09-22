@@ -1,6 +1,7 @@
 mod activity;
 mod catalog;
 mod console;
+mod desktop;
 mod models;
 mod modules;
 mod network;
@@ -33,6 +34,18 @@ struct Port {
     gateway: Ipv4Addr,
     dns: Ipv4Addr,
     dhcp: bool,
+    ipv6: Ipv6Settings,
+    firewall: bool,
+    firewall_v6: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct Ipv6Settings {
+    enabled: bool,
+    auto_config: bool,
+    addresses: Vec<(std::net::Ipv6Addr, i32)>,
+    gateway: Option<std::net::Ipv6Addr>,
+    dns: Option<std::net::Ipv6Addr>,
 }
 
 impl Port {
@@ -45,6 +58,9 @@ impl Port {
             gateway: Ipv4Addr::UNSPECIFIED,
             dns: Ipv4Addr::UNSPECIFIED,
             dhcp: false,
+            ipv6: Ipv6Settings::default(),
+            firewall: false,
+            firewall_v6: false,
         }
     }
 }
@@ -67,6 +83,7 @@ struct Device {
     services: Option<services::Services>,
     powered: bool,
     cards: Vec<Option<&'static str>>,
+    desktop: Option<desktop::Desktop>,
 }
 
 impl Device {
@@ -96,6 +113,7 @@ impl Device {
             services: (model.class == "Server").then(services::Services::default),
             powered: true,
             cards: vec![None; model.card_slots],
+            desktop: matches!(model.class, "Pc" | "Server").then(desktop::Desktop::default),
         }
     }
 

@@ -12,6 +12,8 @@ const PAGE_BREAK: &str = "!\n";
 const MORE: &str = " --More-- ";
 const SPACE: i8 = 32;
 const CTRL_SHIFT_6: i8 = 30;
+const RELOAD: &str = "reload";
+const RELOAD_QUESTION: &str = "Proceed with reload? [confirm]";
 
 pub(super) fn handle(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remote> {
     let [step] = steps else {
@@ -78,6 +80,20 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
     }
 
     let terminal = terminal_id(&device.name);
+    if device.running.as_deref() == Some(RELOAD) {
+        device.running = None;
+        let confirmed = keystroke.is_empty() || keystroke.eq_ignore_ascii_case("y");
+        if confirmed {
+            device.console_mode = "user";
+        }
+        device.console_prompt = prompt(hostname, device.console_mode);
+        state.events.extend([
+            written(&terminal, "\n"),
+            ended(&terminal, RELOAD, 0),
+            written(&terminal, &device.console_prompt),
+        ]);
+        return;
+    }
     let mode = device.console_mode;
     device.cli.push((mode.to_owned(), keystroke.to_owned()));
     let mut events = vec![written(&terminal, &format!("{keystroke}\n"))];
@@ -89,6 +105,13 @@ fn type_command(state: &mut State, index: usize, keystroke: &str) {
         _ => None,
     };
 
+    if keystroke == RELOAD && mode == "enable" {
+        events.push(written(&terminal, RELOAD_QUESTION));
+        device.running = Some(RELOAD.to_owned());
+        RELOAD_QUESTION.clone_into(&mut device.console_prompt);
+        state.events.extend(events);
+        return;
+    }
     if keystroke == "debug hang" {
         events.push(written(&terminal, "waiting forever\n"));
         device.running = Some(keystroke.to_owned());
@@ -155,6 +178,9 @@ fn interrupt(state: &mut State, index: usize) {
     let Some(command) = device.running.take() else {
         return;
     };
+    if command == RELOAD {
+        device.console_prompt = prompt(device.model().hostname, device.console_mode);
+    }
     state.events.extend([
         written(&terminal, "\n"),
         ended(&terminal, &command, 0),

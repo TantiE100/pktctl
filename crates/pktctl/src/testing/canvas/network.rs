@@ -3,7 +3,7 @@ use std::net::Ipv4Addr;
 use ptmp::{Step, TypeCode, Value};
 
 use super::{
-    Endpoint, Port, State, console, modules, physical,
+    Endpoint, Port, State, console, desktop, modules, physical,
     remote::{Remote, check_args, count, int_arg, no_args, number, qstring_arg, string_arg},
     services, wireless,
 };
@@ -62,9 +62,13 @@ fn device(state: &mut State, index: usize, steps: &[Step]) -> Result<Value, Remo
         }
         ("getProcess", rest) => {
             let name = string_arg(step, class)?.to_owned();
+            let has_desktop = state.devices[index].desktop.is_some();
             match state.devices[index].services.as_mut() {
                 Some(services_state) if services::serves(&name) => {
                     services::process(services_state, &name, rest)
+                }
+                _ if has_desktop && desktop::serves(&name) => {
+                    desktop::process(state, index, &name, rest)
                 }
                 _ => wireless::process(state, index, &name, rest),
             }
@@ -198,6 +202,9 @@ fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<V
     let class = port.kind.class();
     let linked = state.link_at(&device_name, name).cloned();
     match steps {
+        [step] if class == HOST_PORT && is_host_port_call(&step.method) => {
+            host_port(&mut state.devices[index].ports[position], step)
+        }
         [step] if port.kind.has_ip() && step.method.starts_with("set") => {
             let port = &mut state.devices[index].ports[position];
             set_address(port, step, class)
@@ -225,6 +232,96 @@ fn port(state: &mut State, index: usize, name: &str, steps: &[Step]) -> Result<V
         [other, ..] => Err(Remote::unknown_method(class, &other.method)),
         [] => Err(Remote::unknown_method(class, "")),
     }
+}
+
+const HOST_PORT: &str = "HostPort";
+const IPV6_CONFIG: &str = "Ipv6AddressConfig";
+const HOST_PORT_CALLS: &[&str] = &[
+    "setIpv6Enabled",
+    "isIpv6Enabled",
+    "setIpv6AddressAutoConfig",
+    "isIpv6AddressAutoConfig",
+    "addIpv6Address",
+    "removeAllIpv6Addresses",
+    "getIpv6Addresses",
+    "setv6DefaultGateway",
+    "setv6ServerIp",
+    "setInboundFirewallService",
+    "isInboundFirewallOn",
+    "setInboundIpv6FirewallService",
+    "isInboundIpv6FirewallOn",
+];
+
+fn is_host_port_call(method: &str) -> bool {
+    HOST_PORT_CALLS.contains(&method)
+}
+
+fn host_port(port: &mut Port, step: &Step) -> Result<Value, Remote> {
+    let flag = |step: &Step| -> Result<bool, Remote> {
+        check_args(step, HOST_PORT, &[TypeCode::Bool])?;
+        Ok(step.args[0].as_bool().unwrap_or_default())
+    };
+    let address = |step: &Step| -> Result<std::net::Ipv6Addr, Remote> {
+        check_args(step, HOST_PORT, &[TypeCode::Ipv6])?;
+        Ok(step.args[0]
+            .as_ipv6()
+            .unwrap_or(std::net::Ipv6Addr::UNSPECIFIED))
+    };
+    let settings = &mut port.ipv6;
+    match step.method.as_str() {
+        "setIpv6Enabled" => settings.enabled = flag(step)?,
+        "setIpv6AddressAutoConfig" => settings.auto_config = flag(step)?,
+        "setInboundFirewallService" => port.firewall = flag(step)?,
+        "setInboundIpv6FirewallService" => port.firewall_v6 = flag(step)?,
+        "setv6DefaultGateway" => settings.gateway = Some(address(step)?),
+        "setv6ServerIp" => settings.dns = Some(address(step)?),
+        "removeAllIpv6Addresses" => {
+            no_args(step, HOST_PORT)?;
+            settings.addresses.clear();
+        }
+        "addIpv6Address" => {
+            check_args(
+                step,
+                HOST_PORT,
+                &[TypeCode::Ipv6, TypeCode::Int, TypeCode::Int, TypeCode::Bool],
+            )?;
+            let ip = step.args[0]
+                .as_ipv6()
+                .unwrap_or(std::net::Ipv6Addr::UNSPECIFIED);
+            let prefix = i32::try_from(step.args[1].as_i64().unwrap_or_default()).unwrap_or(0);
+            if !settings.enabled || !(1..=128).contains(&prefix) {
+                return Ok(Value::Bool(false));
+            }
+            settings.addresses.push((ip, prefix));
+            return Ok(Value::Bool(true));
+        }
+        "isIpv6Enabled" => return no_args(step, HOST_PORT).map(|()| Value::Bool(settings.enabled)),
+        "isIpv6AddressAutoConfig" => {
+            return no_args(step, HOST_PORT).map(|()| Value::Bool(settings.auto_config));
+        }
+        "isInboundFirewallOn" => {
+            return no_args(step, HOST_PORT).map(|()| Value::Bool(port.firewall));
+        }
+        "isInboundIpv6FirewallOn" => {
+            return no_args(step, HOST_PORT).map(|()| Value::Bool(port.firewall_v6));
+        }
+        "getIpv6Addresses" => {
+            no_args(step, HOST_PORT)?;
+            return Ok(Value::Vector {
+                element: TypeCode::Data,
+                items: settings
+                    .addresses
+                    .iter()
+                    .map(|(ip, prefix)| Value::Data {
+                        class: IPV6_CONFIG.into(),
+                        fields: vec![Value::Ipv6(*ip), Value::Int(*prefix), Value::Int(0)],
+                    })
+                    .collect(),
+            });
+        }
+        other => return Err(Remote::unknown_method(HOST_PORT, other)),
+    }
+    Ok(Value::Void)
 }
 
 fn set_address(port: &mut Port, step: &Step, class: &str) -> Result<Value, Remote> {

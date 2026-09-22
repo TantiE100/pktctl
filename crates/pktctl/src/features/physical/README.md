@@ -12,6 +12,7 @@ where each device sits.
 | `move_to_location` | Moves a device or a whole location to another location, optionally to an `x`/`y` inside it. |
 | `rename_location` | Renames any location, including `City#2`-style duplicates. |
 | `add_building` | Creates a named building inside a city. |
+| `remove_location` | Deletes a city, building, closet or rack with everything inside. Devices must be moved out first; the Power Distribution Devices Packet Tracer puts in racks are removed with it. |
 | `show_workspace` | Switches the main window between the logical and the physical workspace. |
 
 ### Paths
@@ -43,9 +44,10 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
   when leaving a rack, and `moveIntoObject(name)` enters a sibling. The tool
   climbs to the common ancestor of the source and the destination, then enters
   each remaining level by name, and finally reads the tree back to confirm.
-- **Racks**: a device moved into a wiring closet is mounted in its rack. If the
-  closet has none, Packet Tracer creates one together with a new Power
-  Distribution Device.
+- **Racks and tables**: a device moved into a wiring closet lands where
+  Packet Tracer puts it: in the rack of the default closets, which gains a new
+  Power Distribution Device when it has none, or on the table of a closet made
+  with `add_location` (verified on 9.0.1). `now_in` names the exact place.
 - **Device objects are recreated** on every move, with a new uuid, and take the
   device's name. The tool therefore always reaches a device through
   `network().getDevice(name).getPhysicalObject()` and locations by uuid,
@@ -56,7 +58,7 @@ name, `list_locations` suffixes the later ones: `City`, `City#2`.
 
 ## Editing the network file
 
-`rename_location` and `add_building` do what the IPC API cannot by editing the
+`rename_location`, `add_building` and `remove_location` do what the IPC API cannot by editing the
 network with the [pktfile](../../../../pktfile/README.md) crate:
 
 1. Take the open network as `.pkt` bytes with `AppWindow.fileSaveToBytes`.

@@ -22,6 +22,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 A wrong or damaged file fails the EAX integrity check (`PktError::Integrity`)
 instead of producing garbage.
 
+To look inside a file:
+
+```sh
+cargo run -p pktfile --example pkt2xml -- lab.pkt > lab.xml
+```
+
+## Physical workspace edits
+
+Packet Tracer's IPC API cannot rename, create or delete some physical
+locations, so pktctl edits the XML instead. Every edit touches only the
+byte ranges of the node it changes:
+
+| Function | Edit |
+|---|---|
+| `physical_nodes` | Lists every `<NODE>` of `PHYSICALWORKSPACE` with its `UUID_STR`, parent, kind and position. |
+| `rename_node` | Replaces a node's `NAME` text. |
+| `add_building` | Inserts a building copied from the empty 9.0.1 network. |
+| `remove_node` | Cuts a node out with its children; refuses Intercity and any node that still holds a device (`TYPE` 6), since devices also live in the logical topology. |
+
 The format was documented by [Unpacket](https://github.com/Punkcake21/Unpacket)
 (MIT). `assets/empty-9.0.1.pkt` is an empty network saved by Packet
 Tracer 9.0.1, and the tests decode it and re-encode it. Files written by

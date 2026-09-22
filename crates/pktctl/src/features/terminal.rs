@@ -17,6 +17,18 @@ const SPACE: i8 = 32;
 const NO_SPECIAL_CHAR: i32 = 0;
 const MORE_MARKER: &str = "--More--";
 const INTERRUPT_GRACE: Duration = Duration::from_secs(3);
+const QUESTION_SETTLE: Duration = Duration::from_millis(500);
+const QUESTION_ENDINGS: &[&str] = &[
+    "[confirm]",
+    "[yes/no]:",
+    "[yes/no]",
+    "(y/n)?",
+    "[y/n]",
+    "]?",
+    "]:",
+    "Password:",
+    "Username:",
+];
 pub(crate) const DEFAULT_TIMEOUT_SECS: u64 = 30;
 pub(crate) const MAX_TIMEOUT_SECS: u64 = 300;
 
@@ -26,6 +38,10 @@ pub struct TerminalRun {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<CommandStatus>,
     pub output: String,
+    /// The question the command is waiting on, such as `Proceed with reload? [confirm]`.
+    /// Answer it with another call in `current` mode; an empty command presses Enter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
 }
 
 pub(crate) fn timeout(requested: Option<u64>) -> Result<Duration, PtError> {
@@ -113,7 +129,9 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             Err(error) => Err(error),
         };
         let outcome = match outcome {
-            Ok(run) if !run.finished => self.interrupt(&mut events, run.output).await,
+            Ok(run) if !run.finished && run.question.is_none() => {
+                self.interrupt(&mut events, run.output).await
+            }
             other => other,
         };
 
@@ -137,6 +155,7 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             finished: false,
             status: None,
             output: output + &rest.output,
+            question: None,
         })
     }
 
@@ -155,13 +174,17 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
         mut output: String,
     ) -> Result<TerminalRun, PtError> {
         let deadline = Instant::now() + timeout;
+        let mut settle = None;
         loop {
-            let event = match tokio::time::timeout_at(deadline, events.recv()).await {
+            let until = settle.map_or(deadline, |settle: Instant| settle.min(deadline));
+            let event = match tokio::time::timeout_at(until, events.recv()).await {
                 Err(_) => {
+                    let question = settle.and_then(|_| pending_question(&output));
                     return Ok(TerminalRun {
                         finished: false,
                         status: None,
                         output,
+                        question,
                     });
                 }
                 Ok(Err(RecvError::Lagged(missed))) => {
@@ -179,16 +202,29 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
                 continue;
             }
             match event.name.as_str() {
-                OUTPUT_WRITTEN => output.push_str(first_text(&event)?),
+                OUTPUT_WRITTEN => {
+                    output.push_str(first_text(&event)?);
+                    settle = pending_question(&output).map(|_| Instant::now() + QUESTION_SETTLE);
+                }
                 MORE_DISPLAYED => {
                     drop_more_marker(&mut output);
                     self.press(SPACE).await?;
                 }
                 COMMAND_ENDED => {
+                    let status = ended_status(&event)?;
+                    if let Some(question) = pending_question(&output) {
+                        return Ok(TerminalRun {
+                            finished: false,
+                            status: None,
+                            output,
+                            question: Some(question),
+                        });
+                    }
                     return Ok(TerminalRun {
                         finished: true,
-                        status: Some(ended_status(&event)?),
+                        status: Some(status),
                         output,
+                        question: None,
                     });
                 }
                 _ => {}
@@ -206,6 +242,15 @@ impl<'a, P: PacketTracer> Terminal<'a, P> {
             .await
             .map(drop)
     }
+}
+
+/// The last line of `output` when it is a question the console is waiting on.
+pub(crate) fn pending_question(output: &str) -> Option<String> {
+    let line = output.trim_end().lines().last()?.trim();
+    QUESTION_ENDINGS
+        .iter()
+        .any(|ending| line.ends_with(ending))
+        .then(|| line.to_owned())
 }
 
 fn drop_more_marker(output: &mut String) {
@@ -305,5 +350,26 @@ mod tests {
         assert_eq!(timeout(Some(300)).unwrap(), Duration::from_secs(300));
         assert!(timeout(Some(0)).is_err());
         assert!(timeout(Some(301)).is_err());
+    }
+
+    #[test]
+    fn tells_questions_from_prompts() {
+        for question in [
+            "Proceed with reload? [confirm]",
+            "Destination filename [startup-config]? ",
+            "ACCEPT? [yes/no]: ",
+            "Password: ",
+            "Address or name of remote host []?",
+        ] {
+            let output = format!("Building configuration...\n{question}");
+            assert_eq!(
+                pending_question(&output).as_deref(),
+                Some(question.trim()),
+                "{question}"
+            );
+        }
+        for prompt in ["R1#", "R1(config-if)#", "Switch>", "C:\\>", "[OK]\nR1#"] {
+            assert_eq!(pending_question(prompt), None, "{prompt}");
+        }
     }
 }

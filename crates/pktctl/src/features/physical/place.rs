@@ -10,6 +10,9 @@ use crate::{
 
 const MAX_CLIMB: usize = 12;
 const CONTAINER_KINDS_FOR_CLOSETS: &[&str] = &["universe", "city", "building"];
+/// Where Packet Tracer puts a device dropped into a wiring closet: the rack of the
+/// default closets, the table of new ones.
+const FURNITURE: &[&str] = &["rack", "stackable_table", "old_table", "shelf"];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -43,7 +46,8 @@ pub struct MoveRequest {
     #[serde(default)]
     pub location: Option<String>,
     /// Path of the destination, for example `Home City/Corporate Office/Main Wiring Closet`.
-    /// Devices moved into a wiring closet are mounted in its rack.
+    /// Devices moved into a wiring closet land on its rack or table, as Packet Tracer
+    /// places them.
     pub into: String,
     /// Optional position inside the destination.
     #[serde(default)]
@@ -81,6 +85,7 @@ pub async fn add_location<P: PacketTracer>(
             target.kind
         )));
     }
+    ensure_reachable(&target.path)?;
     let existing: Vec<String> = before.children("").map(|node| node.uuid.clone()).collect();
 
     let toolbar = app_window().method("getPhysicalToolbar", []);
@@ -131,6 +136,7 @@ pub async fn move_to_location<P: PacketTracer>(
     }
     .clone();
     let target = snapshot.by_path(&request.into)?.clone();
+    ensure_reachable(&target.path)?;
     if !subject.is_device()
         && (target.path == subject.path || target.path.starts_with(&format!("{}/", subject.path)))
     {
@@ -157,9 +163,9 @@ pub async fn move_to_location<P: PacketTracer>(
     };
     let now = moved.parent.clone().unwrap_or_default();
     let landed = now == target.path
-        || finished
-            .by_path(&now)
-            .is_ok_and(|node| node.kind == "rack" && node.parent.as_deref() == Some(&target.path));
+        || finished.by_path(&now).is_ok_and(|node| {
+            FURNITURE.contains(&node.kind.as_str()) && node.parent.as_deref() == Some(&target.path)
+        });
     if !landed {
         return Err(PtError::Rejected(format!(
             "Packet Tracer left `{}` in `{now}` instead of `{}`",
@@ -221,6 +227,22 @@ async fn climb<P: PacketTracer>(
     )))
 }
 
+/// Packet Tracer moves things only into the first of several same-named locations, so a
+/// path through a `Name#2` segment cannot be reached; checked before anything changes.
+fn ensure_reachable(target: &str) -> Result<(), PtError> {
+    match split(target)
+        .into_iter()
+        .find(|segment| is_duplicate(segment))
+    {
+        Some(segment) => Err(PtError::InvalidInput(format!(
+            "`{segment}` shares its name with another location at the same level; Packet \
+             Tracer only moves things into the first one, so give the locations distinct names \
+             first"
+        ))),
+        None => Ok(()),
+    }
+}
+
 async fn descend<P: PacketTracer>(
     packet_tracer: &P,
     handle: &Call,
@@ -229,14 +251,8 @@ async fn descend<P: PacketTracer>(
 ) -> Result<(), PtError> {
     let from_depth = split(from).len();
     let mut level = from.to_owned();
+    ensure_reachable(target)?;
     for segment in split(target).into_iter().skip(from_depth) {
-        if is_duplicate(segment) {
-            return Err(PtError::InvalidInput(format!(
-                "`{segment}` shares its name with another location at the same level; Packet \
-                 Tracer only moves things into the first one, so give the locations distinct \
-                 names first"
-            )));
-        }
         let moved = packet_tracer
             .call(
                 handle
