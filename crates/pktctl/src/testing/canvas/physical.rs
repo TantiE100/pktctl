@@ -193,6 +193,7 @@ pub(super) fn toolbar(state: &mut State, steps: &[Step]) -> Result<Value, Remote
     let physical = &mut state.physical;
     match step.method.as_str() {
         "switchToTopView" => physical.current = 0,
+        "switchToHomeRack" => physical.current = HOME_CLOSET,
         "addCity" if physical.current == 0 => {
             physical.cities_added += 1;
             let offset = 200 + 5 * physical.cities_added;

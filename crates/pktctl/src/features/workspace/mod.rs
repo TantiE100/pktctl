@@ -16,7 +16,7 @@ pub use notes::{
     Note, NoteList, NoteRef, NoteRemoved, NoteRequest, NotesRequest, add_note, list_notes,
     remove_note,
 };
-pub use screenshot::{Screenshot, ScreenshotRequest, capture};
+pub use screenshot::{Screenshot, ScreenshotRequest, View, capture};
 
 use crate::{packet_tracer::PacketTracer, server::PktctlServer};
 
@@ -85,15 +85,17 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "screenshot",
-        description = "Capture the logical workspace as a PNG image, rendered by Packet Tracer \
-                       itself. Optionally also write it to an absolute .png path.",
+        description = "Capture Packet Tracer as a PNG image: the logical workspace rendered by \
+                       Packet Tracer (default), the physical workspace (`view: physical`, which \
+                       switches views for a moment), or the window as it is with any dialog \
+                       open (`view: window`). Optionally also write it to an absolute .png path.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn screenshot_tool(
         &self,
         Parameters(request): Parameters<ScreenshotRequest>,
     ) -> Result<CallToolResult, String> {
-        let shot = capture(self.packet_tracer(), &request)
+        let shot = capture(self.packet_tracer(), self.desktop(), &request)
             .await
             .map_err(|error| error.to_string())?;
         let mut content = vec![ContentBlock::image(shot.base64(), "image/png")];
@@ -168,7 +170,7 @@ mod tests {
     use crate::{
         features::devices::{AddDeviceRequest, add, list},
         packet_tracer::{PtError, scripted::ScriptedPacketTracer},
-        testing::Canvas,
+        testing::{Canvas, FakeDesktop},
     };
 
     fn canvas() -> (Arc<Canvas>, ScriptedPacketTracer) {
@@ -382,12 +384,47 @@ mod tests {
         assert_eq!(texts, ["WAN", "Gig0/0", "Gig0/1"]);
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn physical_captures_switch_views_and_switch_back() {
+        let (canvas, packet_tracer) = canvas();
+        let desktop = FakeDesktop::default();
+        let shot = capture(
+            &packet_tracer,
+            &desktop,
+            &ScreenshotRequest {
+                view: View::Physical,
+                ..ScreenshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(shot.png, FakeDesktop::PNG);
+        assert_eq!(desktop.captures(), 1);
+        assert!(!canvas.is_physical_mode(), "the logical view is restored");
+
+        capture(
+            &packet_tracer,
+            &desktop,
+            &ScreenshotRequest {
+                view: View::Window,
+                ..ScreenshotRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(desktop.captures(), 2);
+    }
+
     #[tokio::test]
     async fn screenshots_are_pngs_and_can_be_written() {
         let (_canvas, packet_tracer) = canvas();
-        let shot = capture(&packet_tracer, &ScreenshotRequest::default())
-            .await
-            .unwrap();
+        let shot = capture(
+            &packet_tracer,
+            &FakeDesktop::default(),
+            &ScreenshotRequest::default(),
+        )
+        .await
+        .unwrap();
         assert!(shot.png.starts_with(b"\x89PNG"));
         assert!(!shot.base64().is_empty());
 
@@ -395,8 +432,10 @@ mod tests {
         let path = path.to_string_lossy().into_owned();
         let saved = capture(
             &packet_tracer,
+            &FakeDesktop::default(),
             &ScreenshotRequest {
                 save_to: Some(path.clone()),
+                ..ScreenshotRequest::default()
             },
         )
         .await

@@ -27,7 +27,7 @@ Validation levels:
 | End-device addressing | `configure_host` | live |
 | End-device Command Prompt | `run_host_command` | live |
 | Files | `save_network`, `open_network`, `new_network` | live |
-| Canvas image and notes | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
+| Canvas image and notes; physical workspace and window captures | `screenshot`, `add_note`, `list_notes`, `remove_note` | live |
 | Any IPC method | `describe_ipc`, `call_ipc` | live |
 | Physical workspace: tree, cities, closets, racks, moving devices and locations, view | `list_locations`, `add_location`, `move_to_location`, `show_workspace` | live |
 | Physical workspace: renaming locations, creating buildings (not in the IPC API) | `rename_location`, `add_building`, through `.pkt` editing | live |
@@ -54,7 +54,7 @@ What the API does not offer, and how pktctl handles it:
 | Rename a physical location, create a building | No | `rename_location`, `add_building` edit the saved `.pkt` and reopen it. |
 | Connect a wireless client to a chosen network | `setCurrentProfile` exists but fails in 9.0.1, and clients only associate when their radio starts | `connect_wireless` writes the client's current profile into the saved `.pkt` and reopens it. |
 | Register pktctl as an external application | No | `setup_exapp` builds the file; adding it is one click in Packet Tracer. |
-| Image of the physical workspace | No, only `LogicalWorkspace.getWorkspaceImage` | `show_workspace` switches the view for a person to look. |
+| Image of the physical workspace | No, only `LogicalWorkspace.getWorkspaceImage` | `screenshot` with `view: physical` or `physical_rack` switches views and captures Packet Tracer's own window through the operating system. |
 | Headless Packet Tracer on macOS | No: the Cocoa platform plugin is required | Packet Tracer must be running with a window. |
 
 Everything else Packet Tracer exposes over IPC is callable through

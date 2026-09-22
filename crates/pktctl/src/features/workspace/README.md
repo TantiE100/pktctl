@@ -36,9 +36,22 @@ if they get in the way.
 
 ## Screenshots
 
-Packet Tracer renders the logical workspace itself (`getWorkspaceImage`), so the
-image matches what is on screen, labels included. The agent receives it as an
-image it can look at; `save_to` also writes the PNG for lab reports.
+`screenshot` takes a `view`:
+
+| View | How |
+|---|---|
+| `logical` (default) | Packet Tracer renders the logical workspace itself (`LogicalWorkspace.getWorkspaceImage("PNG")`). Works with the window hidden. |
+| `physical` | Switches to the physical workspace at Intercity, captures Packet Tracer's window, switches back. |
+| `physical_rack` | The same inside the main wiring closet, showing its rack. |
+| `window` | Packet Tracer's window as it is, including any open dialog. |
+
+The IPC API has no image of the physical workspace, so the last three capture
+Packet Tracer's own window through the operating system with
+[xcap](https://crates.io/crates/xcap) (macOS, Windows, Linux). Only that
+window is captured, never the screen. On macOS the app that runs pktctl needs
+the Screen Recording permission (System Settings > Privacy & Security); the
+error says so if it is missing. The capture waits 0.8 seconds after switching
+views so Packet Tracer can redraw, and the view you had is restored afterwards.
 
 ## Notes and port labels
 
