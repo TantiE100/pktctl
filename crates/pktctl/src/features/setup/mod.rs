@@ -27,29 +27,29 @@ pub struct SetupResult {
 
 pub async fn generate(settings: &SetupSettings) -> Result<SetupResult, PtError> {
     let xml = render(&settings.credentials.app_id, &settings.credentials.secret)?;
-    let meta = find_meta(settings.packet_tracer_home.as_deref())?;
-
-    std::fs::create_dir_all(&settings.output_dir).map_err(|error| {
-        PtError::InvalidInput(format!(
-            "could not create {}: {error}",
-            settings.output_dir.display()
-        ))
-    })?;
     let xml_path = settings.output_dir.join(XML_FILE);
     let pta_path = settings.output_dir.join(PTA_FILE);
-    write_private(&xml_path, &xml)?;
+    let meta = {
+        let home = settings.packet_tracer_home.clone();
+        let output_dir = settings.output_dir.clone();
+        let xml_path = xml_path.clone();
+        tokio::task::spawn_blocking(move || prepare(home.as_deref(), &output_dir, &xml_path, &xml))
+            .await
+            .map_err(|error| PtError::Transport(format!("setup stopped: {error}")))??
+    };
 
     let outcome = tokio::process::Command::new(&meta)
         .arg(&pta_path)
         .arg(&xml_path)
         .output()
         .await;
-    let _ = std::fs::remove_file(&xml_path);
+    let _ = tokio::fs::remove_file(&xml_path).await;
 
     let output = outcome.map_err(|error| {
         PtError::Transport(format!("could not run {}: {error}", meta.display()))
     })?;
-    if !output.status.success() || !pta_path.exists() {
+    let produced = tokio::fs::try_exists(&pta_path).await.unwrap_or(false);
+    if !output.status.success() || !produced {
         return Err(PtError::Transport(format!(
             "{} did not produce {}: {}",
             meta.display(),
@@ -71,6 +71,23 @@ pub async fn generate(settings: &SetupSettings) -> Result<SetupResult, PtError> 
         meta_tool: meta.display().to_string(),
         pta,
     })
+}
+
+fn prepare(
+    home: Option<&Path>,
+    output_dir: &Path,
+    xml_path: &Path,
+    xml: &str,
+) -> Result<PathBuf, PtError> {
+    let meta = find_meta(home)?;
+    std::fs::create_dir_all(output_dir).map_err(|error| {
+        PtError::InvalidInput(format!(
+            "could not create {}: {error}",
+            output_dir.display()
+        ))
+    })?;
+    write_private(xml_path, xml)?;
+    Ok(meta)
 }
 
 fn render(app_id: &str, secret: &str) -> Result<String, PtError> {

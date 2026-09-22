@@ -40,7 +40,9 @@ where
         SCRATCH_FILES.fetch_add(1, Ordering::Relaxed)
     ));
     let path = scratch.display().to_string();
-    std::fs::write(&scratch, edited).map_err(|error| local_file(&path, &error))?;
+    tokio::fs::write(&scratch, edited)
+        .await
+        .map_err(|error| local_file(&path, &error))?;
 
     open(
         packet_tracer,
