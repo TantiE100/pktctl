@@ -86,9 +86,9 @@ Methods that only exist inside the Java client (`getFactory`,
 `crates/pktctl/assets/ipc-index.json` is generated from the framework jar and
 Javadoc that ship with Packet Tracer; see
 [tools/ipc-index](../../../../../tools/ipc-index/README.md). The generator reads
-each method's wire name and argument encoders from the bytecode of its
-implementation, following delegations through `IPCFactory`, so the index
-matches what the official Java client sends.
+the class files straight out of the jar and takes each method's wire name and
+argument encoders from the bytecode of its implementation, following delegations
+through `IPCFactory`, so the index matches what the official Java client sends.
 
 The index carries signatures, not prose: the Javadoc summaries belong to Cisco
 and are left out, so `describe_ipc` matches on class and method names. Rebuild
