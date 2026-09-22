@@ -105,6 +105,42 @@ async fn require_activity<P: PacketTracer>(packet_tracer: &P) -> Result<(), PtEr
     }
 }
 
+async fn require_unlocked<P: PacketTracer>(packet_tracer: &P) -> Result<(), PtError> {
+    require_activity(packet_tracer).await?;
+    let confirmed = get(packet_tracer, "isPasswordConfirmed").await?;
+    if expect_bool(&confirmed, "isPasswordConfirmed")? {
+        Ok(())
+    } else {
+        Err(PtError::InvalidInput(
+            "this activity is password-protected: Packet Tracer only reports scores and runs \
+             checks for it after unlock_activity with the activity's password"
+                .into(),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct UnlockRequest {
+    /// The activity's password, as set by its author.
+    pub password: String,
+}
+
+pub async fn unlock<P: PacketTracer>(
+    packet_tracer: &P,
+    request: &UnlockRequest,
+) -> Result<ActivityStatus, PtError> {
+    require_activity(packet_tracer).await?;
+    let accepted = packet_tracer
+        .call(active_file().method("confirmPassword", [Value::qstring(&request.password)]))
+        .await?;
+    if !expect_bool(&accepted, "confirmPassword")? {
+        return Err(PtError::Rejected(
+            "Packet Tracer did not accept that password".into(),
+        ));
+    }
+    status(packet_tracer).await
+}
+
 fn count(value: &Value, what: &str) -> Result<i64, PtError> {
     #[allow(clippy::cast_possible_truncation)]
     Ok(expect_number(value, what)?.round() as i64)
@@ -128,6 +164,22 @@ pub async fn status<P: PacketTracer>(packet_tracer: &P) -> Result<ActivityStatus
             seconds_elapsed: None,
             seconds_left: None,
             password_confirmed: None,
+        });
+    }
+    let confirmed = get(packet_tracer, "isPasswordConfirmed").await?;
+    if !expect_bool(&confirmed, "isPasswordConfirmed")? {
+        let pages = get(packet_tracer, "getInstructionCount").await?;
+        return Ok(ActivityStatus {
+            file,
+            is_activity: true,
+            percent_complete: None,
+            score_percent: None,
+            items: None,
+            points: None,
+            instruction_pages: expect_integer(&pages, "instruction pages").ok(),
+            seconds_elapsed: None,
+            seconds_left: None,
+            password_confirmed: Some(false),
         });
     }
     let (percent, score, items, correct_items, points, correct_points) = tokio::try_join!(
@@ -201,7 +253,7 @@ pub async fn instructions<P: PacketTracer>(
 }
 
 pub async fn check<P: PacketTracer>(packet_tracer: &P) -> Result<ActivityCheck, PtError> {
-    require_activity(packet_tracer).await?;
+    require_unlocked(packet_tracer).await?;
     packet_tracer
         .call(active_file().method("runConnectivityTests", []))
         .await?;
@@ -231,7 +283,7 @@ pub async fn check<P: PacketTracer>(packet_tracer: &P) -> Result<ActivityCheck, 
 }
 
 pub async fn reset<P: PacketTracer>(packet_tracer: &P) -> Result<ActivityStatus, PtError> {
-    require_activity(packet_tracer).await?;
+    require_unlocked(packet_tracer).await?;
     packet_tracer
         .call(active_file().method("resetActivity", []))
         .await?;
@@ -321,6 +373,27 @@ impl<P: PacketTracer> PktctlServer<P> {
     }
 
     #[tool(
+        name = "unlock_activity",
+        description = "Give a password-protected activity its password (for its author or \
+                       instructor) so Packet Tracer reports scores and runs checks. \
+                       activity_status shows password_confirmed: false when this is needed.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn unlock_activity_tool(
+        &self,
+        Parameters(request): Parameters<UnlockRequest>,
+    ) -> Result<Json<ActivityStatus>, String> {
+        unlock(self.packet_tracer(), &request)
+            .await
+            .map(Json)
+            .map_err(|error| error.to_string())
+    }
+
+    #[tool(
         name = "network_description",
         description = "Read the open file's description (the Description button in Packet \
                        Tracer), or replace it with `text`.",
@@ -366,6 +439,7 @@ mod tests {
                     ("PC1 to Server: failed".into(), false),
                 ],
                 seconds_left: Some(600),
+                password: None,
             },
         );
         let packet_tracer = ScriptedPacketTracer::on_canvas(Arc::clone(&canvas));
@@ -425,6 +499,51 @@ mod tests {
         assert_eq!(checked.connectivity_results[1], "PC1 to Server: failed");
         let reset_status = reset(&packet_tracer).await.unwrap();
         assert_eq!(reset_status.seconds_elapsed, Some(0));
+    }
+
+    #[tokio::test]
+    async fn password_protected_activities_report_what_they_can() {
+        let canvas = Arc::new(Canvas::new());
+        canvas.open_activity(
+            "/labs/graded.pka",
+            ActivityFixture {
+                instructions: vec!["<p>VLAN Configuration</p>".into()],
+                items: (2, 10),
+                connectivity: vec![],
+                seconds_left: None,
+                password: Some("secreto".into()),
+            },
+        );
+        let packet_tracer = ScriptedPacketTracer::on_canvas(Arc::clone(&canvas));
+        let locked = status(&packet_tracer).await.unwrap();
+        assert_eq!(locked.password_confirmed, Some(false));
+        assert_eq!(locked.percent_complete, None);
+        assert_eq!(locked.instruction_pages, Some(1));
+        assert!(
+            instructions(&packet_tracer, &InstructionsRequest::default())
+                .await
+                .is_ok()
+        );
+        let refused = check(&packet_tracer).await.unwrap_err();
+        assert!(refused.to_string().contains("unlock_activity"));
+
+        let wrong = unlock(
+            &packet_tracer,
+            &UnlockRequest {
+                password: "nope".into(),
+            },
+        )
+        .await;
+        assert!(wrong.is_err());
+        let unlocked = unlock(
+            &packet_tracer,
+            &UnlockRequest {
+                password: "secreto".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(unlocked.percent_complete, Some(20.0));
     }
 
     #[tokio::test]
