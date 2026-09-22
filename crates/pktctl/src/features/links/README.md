@@ -56,6 +56,14 @@ that both ports are free. Otherwise it answers with the reason, for example
 When Packet Tracer still refuses (wrong medium, wireless port), the error says
 which cable did not fit.
 
+## Wireless ports
+
+A radio port (`Wireless0` on a laptop with a wireless card, the radio of an
+access point) is attached to an `Antenna` link, not a cable, and has no
+`getPort1`/`getPort2`. `list_ports` reports it with `"wireless": true` and no
+`connection`, and `list_links` lists cables only. Association details belong
+to the [wireless](../wireless/README.md) feature.
+
 ## IPC calls
 
 | Purpose | Call |

@@ -237,6 +237,8 @@ fn set_address(port: &mut Port, step: &Step, class: &str) -> Result<Value, Remot
     Ok(Value::Void)
 }
 
+const WIRELESS: i32 = 8109;
+
 fn link_call(
     state: &mut State,
     ends: &[Endpoint; 2],
@@ -245,6 +247,7 @@ fn link_call(
 ) -> Result<Value, Remote> {
     match steps {
         [step] if step.method == "getConnectionType" => Ok(Value::Int(cable)),
+        [step, ..] if cable == WIRELESS => Err(Remote::unknown_method("Antenna", &step.method)),
         [end, rest @ ..] if end.method == "getPort1" || end.method == "getPort2" => {
             let end = &ends[usize::from(end.method == "getPort2")];
             match rest {

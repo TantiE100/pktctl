@@ -3,6 +3,8 @@ use ptmp::{Call, Value};
 use schemars::JsonSchema;
 use serde::Serialize;
 
+const WIRELESS: i64 = 8109;
+
 use crate::{
     features::{
         devices::describe,
@@ -36,6 +38,9 @@ pub struct Port {
     pub mask: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection: Option<Connection>,
+    /// A radio port with a wireless association instead of a cable.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub wireless: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -108,7 +113,11 @@ pub async fn connection<P: PacketTracer>(
             }
             other => other,
         })?;
-    read_connection(packet_tracer, device_name, port_name, &port).await
+    Ok(
+        read_connection(packet_tracer, device_name, port_name, &port)
+            .await?
+            .cable(),
+    )
 }
 
 pub async fn list_links<P: PacketTracer>(packet_tracer: &P) -> Result<LinkList, PtError> {
@@ -119,19 +128,27 @@ pub async fn list_links<P: PacketTracer>(packet_tracer: &P) -> Result<LinkList, 
         .map_err(|_| PtError::UnexpectedReply("link count out of range".into()))?;
     let links = try_join_all((0..count).map(|index| async move {
         let link = network().method("getLinkAt", [Value::Int(index)]);
-        let (a, b, cable) = tokio::try_join!(
+        let cable = packet_tracer
+            .call(link.clone().method("getConnectionType", []))
+            .await?;
+        let cable = expect_integer(&cable, "cable type")?;
+        if cable == WIRELESS {
+            return Ok::<_, PtError>(None);
+        }
+        let (a, b) = tokio::try_join!(
             end(packet_tracer, &link, "getPort1"),
             end(packet_tracer, &link, "getPort2"),
-            packet_tracer.call(link.clone().method("getConnectionType", [])),
         )?;
-        Ok::<_, PtError>(Link {
+        Ok(Some(Link {
             a,
             b,
-            cable: cable_kind(expect_integer(&cable, "cable type")?),
-        })
+            cable: cable_kind(cable),
+        }))
     }))
     .await?;
-    Ok(LinkList { links })
+    Ok(LinkList {
+        links: links.into_iter().flatten().collect(),
+    })
 }
 
 async fn read_port<P: PacketTracer>(
@@ -148,15 +165,31 @@ async fn read_port<P: PacketTracer>(
         get("getSubnetMask"),
     );
     let name = expect_text(&name?, "port name")?;
-    let connection = read_connection(packet_tracer, device_name, &name, &port).await?;
+    let attachment = read_connection(packet_tracer, device_name, &name, &port).await?;
     Ok(Port {
+        wireless: matches!(attachment, Attachment::Wireless),
+        connection: attachment.cable(),
         up: expect_bool(&up?, "port status")?,
         protocol_up: expect_bool(&protocol_up?, "protocol status")?,
         ip: address(ip)?,
         mask: address(mask)?,
-        connection,
         name,
     })
+}
+
+enum Attachment {
+    Free,
+    Wireless,
+    Cable(Connection),
+}
+
+impl Attachment {
+    fn cable(self) -> Option<Connection> {
+        match self {
+            Self::Cable(connection) => Some(connection),
+            Self::Free | Self::Wireless => None,
+        }
+    }
 }
 
 async fn read_connection<P: PacketTracer>(
@@ -164,16 +197,20 @@ async fn read_connection<P: PacketTracer>(
     device_name: &str,
     port_name: &str,
     port: &Call,
-) -> Result<Option<Connection>, PtError> {
+) -> Result<Attachment, PtError> {
     let link = port.clone().method("getLink", []);
     let cable = match packet_tracer
         .call(link.clone().method("getConnectionType", []))
         .await
     {
-        Ok(cable) => cable_kind(expect_integer(&cable, "cable type")?),
-        Err(PtError::NotFound(_)) => return Ok(None),
+        Ok(cable) => expect_integer(&cable, "cable type")?,
+        Err(PtError::NotFound(_)) => return Ok(Attachment::Free),
         Err(other) => return Err(other),
     };
+    if cable == WIRELESS {
+        return Ok(Attachment::Wireless);
+    }
+    let cable = cable_kind(cable);
     let (first, second) = tokio::try_join!(
         end(packet_tracer, &link, "getPort1"),
         end(packet_tracer, &link, "getPort2"),
@@ -183,7 +220,7 @@ async fn read_connection<P: PacketTracer>(
     } else {
         first
     };
-    Ok(Some(Connection { to, cable }))
+    Ok(Attachment::Cable(Connection { to, cable }))
 }
 
 async fn end<P: PacketTracer>(

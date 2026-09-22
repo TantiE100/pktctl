@@ -239,6 +239,17 @@ impl Canvas {
         }
     }
 
+    pub fn associate_wireless(&self, device: &str, port: &str) {
+        let end = Endpoint {
+            device: device.to_owned(),
+            port: port.to_owned(),
+        };
+        self.state().links.push(Link {
+            ends: [end.clone(), end],
+            cable: 8109,
+        });
+    }
+
     pub fn realtime_presses(&self) -> Vec<String> {
         self.state().realtime_presses.clone()
     }
