@@ -14,7 +14,14 @@ use tokio::{
 };
 
 const APP_ID: &str = "dev.pktctl.e2e";
-const TOOLS: [&str; 18] = [
+const TOOLS: [&str; 25] = [
+    "add_note",
+    "list_notes",
+    "new_network",
+    "open_network",
+    "remove_note",
+    "save_network",
+    "screenshot",
     "add_module",
     "list_slots",
     "remove_module",
@@ -469,6 +476,43 @@ async fn installs_modules_end_to_end() {
     assert_eq!(
         removed["structuredContent"]["ports_removed"],
         json!(["Serial0/1/0", "Serial0/1/1"])
+    );
+}
+
+#[tokio::test]
+async fn saves_reopens_and_captures_the_workspace_end_to_end() {
+    let (canvas, _pt, mut client) = client_with_canvas().await;
+    client
+        .call_tool("add_device", json!({ "model": "2911", "name": "R1" }))
+        .await;
+    let saved = client
+        .call_tool("save_network", json!({ "path": "/labs/e2e.pkt" }))
+        .await;
+    assert_eq!(saved["structuredContent"]["path"], "/labs/e2e.pkt");
+
+    client.call_tool("new_network", json!({})).await;
+    assert!(canvas.device_names().is_empty());
+
+    let opened = client
+        .call_tool("open_network", json!({ "path": "/labs/e2e.pkt" }))
+        .await;
+    assert_eq!(opened["structuredContent"]["devices"], 1);
+
+    let shot = client.call_tool("screenshot", json!({})).await;
+    assert_eq!(shot["content"][0]["type"], "image");
+    assert_eq!(shot["content"][0]["mimeType"], "image/png");
+
+    let note = client
+        .call_tool("add_note", json!({ "x": 50, "y": 20, "text": "LAN A" }))
+        .await;
+    assert_eq!(note["structuredContent"]["text"], "LAN A");
+    let notes = client.call_tool("list_notes", json!({})).await;
+    assert_eq!(
+        notes["structuredContent"]["notes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
     );
 }
 

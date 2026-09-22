@@ -11,6 +11,7 @@ authors.workspace = true
 testing = []
 
 [dependencies]
+base64 = "0.23"
 futures = { workspace = true }
 ptmp = { workspace = true }
 rmcp = { workspace = true }

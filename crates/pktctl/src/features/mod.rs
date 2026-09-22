@@ -7,3 +7,4 @@ pub mod links;
 pub mod modules;
 pub mod paths;
 pub mod status;
+pub mod workspace;

@@ -17,17 +17,23 @@ openssl rand -hex 24
 
 Copy [pktctl-exapp.xml](pktctl-exapp.xml) and set `ID` and `KEY`.
 
+Packet Tracer knows eleven privileges (`SecurityPrivilege` in the framework).
+The template grants all of them:
+
 | Privilege | Needed for |
 |---|---|
-| `GET_NETWORK_INFO` | `status`, `list_devices`, reading any state |
-| `CHANGE_NETWORK_INFO` | `run_cli` and any tool that changes the network |
+| `GET_NETWORK_INFO` | `status`, every `list_*` tool, reading any state |
+| `CHANGE_NETWORK_INFO` | tools that change devices, links, modules, addressing or IOS |
+| `CHANGE_GUI`, `MISC_GUI` | notes and screenshots on the canvas |
+| `FILE` | `save_network`, `open_network`, `new_network` |
 | `SIMULATION_MODE` | simulation tools |
-| `CHANGE_GUI`, `MISC_GUI` | workspace, canvas and file tools |
 | `CHANGE_PREFERENCES` | options such as auto cabling |
-| `ACTIVITY_WIZARD`, `MULTIUSER`, `APPLICATION` | activity files, multi-user, ExApp messaging |
+| `ACTIVITY_WIZARD`, `MULTIUSER`, `IPC`, `APPLICATION` | activity files, multi-user, ExApp messaging |
 
-Granting all of them now avoids re-registering when new tools arrive. Remove
-the ones you do not want pktctl to have.
+A call outside the granted privileges fails with `does not have the necessary
+privilege`, which pktctl turns into an instruction to register again. Privileges
+are fixed at registration time, so granting everything now avoids registering
+again when new tools arrive.
 
 `EXECUTABLE_PATH` is required by the format but pktctl is started by your MCP
 client, not by Packet Tracer; keep `LOADING` as `ON_DEMAND`.
