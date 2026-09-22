@@ -9,6 +9,7 @@ const SERVER: &str = "WirelessServerProcess";
 const CLIENT: &str = "WirelessClientProcess";
 const WIRELESS_LINK: i32 = 8109;
 const OPEN: i64 = 0;
+const RANGE: f64 = 120.0;
 pub(super) const CLIENT_PORT: &str = "Wireless0";
 pub(super) const AP_PORT: &str = "Port 1";
 
@@ -153,31 +154,40 @@ pub(super) fn radio_mac(index: usize) -> String {
 /// Associates every client whose current profile matches an access point, as Packet
 /// Tracer does when a file is opened or a radio appears.
 pub(super) fn associate(state: &mut State) {
-    let access_points: Vec<(String, Radio)> = state
+    let physical = &state.physical;
+    let position =
+        |physical_name: &str| physical.device_position(physical_name).unwrap_or_default();
+    let access_points: Vec<(String, Radio, (f64, f64))> = state
         .devices
         .iter()
         .filter_map(|device| {
             device
                 .access_radio
                 .clone()
-                .map(|radio| (device.name.clone(), radio))
+                .map(|radio| (device.name.clone(), radio, position(&device.physical_name)))
         })
         .collect();
     let mut links = Vec::new();
-    for device in &mut state.devices {
+    let client_positions: Vec<(f64, f64)> = state
+        .devices
+        .iter()
+        .map(|device| position(&device.physical_name))
+        .collect();
+    for (device, here) in state.devices.iter_mut().zip(client_positions) {
         let Some(client) = device.client.as_mut() else {
             continue;
         };
         let profile = &client.profile;
         client.associated = access_points
             .iter()
-            .find(|(_, radio)| {
+            .find(|(_, radio, there)| {
                 radio.ssid == profile.ssid
                     && radio.authen == profile.authen_type
                     && radio.encrypt == profile.encrypt_type
                     && (radio.authen == OPEN || radio.key == profile.key)
+                    && (here.0 - there.0).hypot(here.1 - there.1) <= RANGE
             })
-            .map(|(name, _)| name.clone());
+            .map(|(name, ..)| name.clone());
         if let Some(ap) = &client.associated {
             links.push(Link {
                 ends: [

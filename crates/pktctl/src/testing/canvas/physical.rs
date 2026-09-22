@@ -177,6 +177,12 @@ impl Physical {
         }
     }
 
+    /// Position used for radio range; the canvas treats local coordinates as global.
+    pub(super) fn device_position(&self, name: &str) -> Option<(f64, f64)> {
+        let id = self.device_place(name)?;
+        Some((f64::from(self.places[id].x), f64::from(self.places[id].y)))
+    }
+
     pub(super) fn parent_of_device(&self, name: &str) -> Option<String> {
         let id = self.device_place(name)?;
         self.places[id]
@@ -264,6 +270,8 @@ fn attribute(physical: &mut Physical, id: usize, step: &Step) -> Result<Value, R
         "getName" => no_args(step, CLASS).map(|()| Value::qstring(&place.name)),
         "getType" => no_args(step, CLASS).map(|()| Value::Int(place.kind)),
         "getX" => no_args(step, CLASS).map(|()| Value::Int(place.x)),
+        "getGlobalX" => no_args(step, CLASS).map(|()| Value::Double(f64::from(place.x))),
+        "getGlobalY" => no_args(step, CLASS).map(|()| Value::Double(f64::from(place.y))),
         "getY" => no_args(step, CLASS).map(|()| Value::Int(place.y)),
         "getChildCount" => no_args(step, CLASS)
             .map(|()| Value::Int(i32::try_from(physical.children(id).len()).unwrap_or(i32::MAX))),

@@ -10,9 +10,12 @@ use crate::{
         hosts::{HostConfigRequest, configure},
         network_file::{edit_saved_network, file_error},
         paths::device,
+        physical::{MoveRequest, Snapshot, move_to_location},
         power::fast_forward,
     },
-    packet_tracer::{PacketTracer, PtError, expect_bool, expect_integer, expect_text},
+    packet_tracer::{
+        PacketTracer, PtError, expect_bool, expect_integer, expect_number, expect_text,
+    },
 };
 
 const SERVER: &str = "WirelessServerProcess";
@@ -20,6 +23,11 @@ const CLIENT: &str = "WirelessClientProcess";
 const ASSOCIATION_POLLS: u32 = 15;
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 const WPA_KEY: std::ops::RangeInclusive<usize> = 8..=63;
+/// Radio reach measured on Packet Tracer 9.0.1 in physical-workspace global units:
+/// associations succeed at 110 and fail at 130 for every access point model tried.
+const RADIO_RANGE: f64 = 120.0;
+const COMFORTABLE_RANGE: f64 = 100.0;
+const BESIDE_CLIENT: i64 = 30;
 const WEP_64_HEX: usize = 10;
 const WEP_128_HEX: usize = 26;
 
@@ -98,6 +106,10 @@ pub struct ConnectWirelessRequest {
     pub security: Security,
     #[serde(default)]
     pub key: Option<String>,
+    /// Move the access point with this SSID next to the client first when it is out of radio
+    /// range (Packet Tracer's radios reach about 120 units in the physical workspace).
+    #[serde(default)]
+    pub bring_access_point: bool,
     /// Static address. Omit for DHCP.
     #[serde(default)]
     pub ip: Option<String>,
@@ -116,6 +128,13 @@ pub struct WirelessConnection {
     pub associated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_point: Option<String>,
+    /// When the client did not associate: why, with the distance to each access point
+    /// broadcasting the SSID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnosis: Option<String>,
+    /// The access point that `bring_access_point` moved next to the client.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub moved_access_point: Option<String>,
     /// Address of the wireless port; with DHCP, the lease if one arrived.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<String>,
@@ -307,6 +326,11 @@ pub async fn connect_wireless<P: PacketTracer>(
         dns: text(&request.dns),
     };
 
+    let moved_access_point = if request.bring_access_point {
+        bring_access_point(packet_tracer, &name, &ssid).await?
+    } else {
+        None
+    };
     apply_radio(
         packet_tracer,
         &process(&name, CLIENT),
@@ -335,14 +359,115 @@ pub async fn connect_wireless<P: PacketTracer>(
         dns: request.dns.clone().filter(|dns| !dns.trim().is_empty()),
     };
     let addressed = configure(packet_tracer, &addressing).await?;
+    let diagnosis = if access_point.is_some() {
+        None
+    } else {
+        Some(diagnose(packet_tracer, &name, &ssid).await?)
+    };
     Ok(WirelessConnection {
         device: name,
         ssid,
         associated: access_point.is_some(),
         access_point,
+        diagnosis,
+        moved_access_point,
         ip: addressed.ip,
         file,
     })
+}
+
+async fn global_position<P: PacketTracer>(
+    packet_tracer: &P,
+    name: &str,
+) -> Result<(f64, f64), PtError> {
+    let physical = device(name).method("getPhysicalObject", []);
+    let (x, y) = tokio::try_join!(
+        packet_tracer.call(physical.clone().method("getGlobalX", [])),
+        packet_tracer.call(physical.method("getGlobalY", [])),
+    )?;
+    Ok((
+        expect_number(&x, "global x")?,
+        expect_number(&y, "global y")?,
+    ))
+}
+
+async fn access_points_for<P: PacketTracer>(
+    packet_tracer: &P,
+    client: &str,
+    ssid: &str,
+) -> Result<Vec<(String, f64)>, PtError> {
+    let here = global_position(packet_tracer, client).await?;
+    let mut found = Vec::new();
+    for candidate in list(packet_tracer).await?.devices {
+        if candidate.name == client || !has_process(packet_tracer, &candidate.name, SERVER).await? {
+            continue;
+        }
+        let (candidate_ssid, _) =
+            read_radio(packet_tracer, &process(&candidate.name, SERVER)).await?;
+        if candidate_ssid != ssid {
+            continue;
+        }
+        let there = global_position(packet_tracer, &candidate.name).await?;
+        found.push((candidate.name, (here.0 - there.0).hypot(here.1 - there.1)));
+    }
+    found.sort_by(|left, right| left.1.total_cmp(&right.1));
+    Ok(found)
+}
+
+async fn bring_access_point<P: PacketTracer>(
+    packet_tracer: &P,
+    client: &str,
+    ssid: &str,
+) -> Result<Option<String>, PtError> {
+    let candidates = access_points_for(packet_tracer, client, ssid).await?;
+    let Some((nearest, distance)) = candidates.into_iter().next() else {
+        return Err(PtError::InvalidInput(format!(
+            "no access point broadcasts SSID `{ssid}`; configure one with configure_access_point"
+        )));
+    };
+    if distance <= COMFORTABLE_RANGE {
+        return Ok(None);
+    }
+    let snapshot = Snapshot::read(packet_tracer).await?;
+    let spot = snapshot.device(client)?;
+    let parent = spot.parent.clone().unwrap_or_default();
+    move_to_location(
+        packet_tracer,
+        &MoveRequest {
+            device: Some(nearest.clone()),
+            location: None,
+            into: parent,
+            x: i32::try_from(spot.x + BESIDE_CLIENT).ok(),
+            y: i32::try_from(spot.y).ok(),
+        },
+    )
+    .await?;
+    Ok(Some(nearest))
+}
+
+async fn diagnose<P: PacketTracer>(
+    packet_tracer: &P,
+    client: &str,
+    ssid: &str,
+) -> Result<String, PtError> {
+    let candidates = access_points_for(packet_tracer, client, ssid).await?;
+    if candidates.is_empty() {
+        return Ok(format!(
+            "no access point broadcasts SSID `{ssid}`; configure one with configure_access_point"
+        ));
+    }
+    let listed: Vec<String> = candidates
+        .iter()
+        .map(|(name, distance)| format!("{name} is {distance:.0} units away"))
+        .collect();
+    let nearest = candidates[0].1;
+    let advice = if nearest > RADIO_RANGE {
+        "out of radio range (about 120 units): move it closer with move_to_location, or call \
+         connect_wireless again with bring_access_point: true"
+    } else {
+        "in range, so check the security and key match the access point"
+    };
+    Ok(format!("{}; {advice}", listed.join(", ")))
 }
 
 async fn has_radio<P: PacketTracer>(packet_tracer: &P, name: &str) -> Result<bool, PtError> {

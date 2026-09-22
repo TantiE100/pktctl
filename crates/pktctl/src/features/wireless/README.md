@@ -58,10 +58,19 @@ So `connect_wireless`:
 A wrong key or SSID leaves `associated: false`. The network ends up saved, to
 its current file or to a temporary file if it was never saved.
 
-- **Range is physical.** Packet Tracer puts new access points in the main
-  wiring closet's rack and laptops in the office, which is out of radio range.
-  Move the access point next to its clients with
-  [`move_to_location`](../physical/README.md) first.
+- **Range is distance, not rooms.** Measured on 9.0.1 with a laptop's
+  `PT-LAPTOP-NM-1W`: AccessPoint-PT, AccessPoint-PT-N, AccessPoint-PT-AC and
+  Linksys-WRT300N associate at 110 global units of the physical workspace and
+  not at 130, so the reach is about 120. Containers do not matter: an access
+  point in the wiring closet's rack, in another closet or even in another city
+  associates as long as the global distance is short (Packet Tracer's default
+  placements are within range). When a client does not associate,
+  `diagnosis` lists each access point broadcasting the SSID with its distance
+  and says whether range or security is the problem.
+- `bring_access_point: true` moves the nearest access point broadcasting the
+  SSID into the client's location, 30 local units beside it, before
+  connecting, when it is further than 100 units. It never moves anything
+  otherwise.
 - A wired laptop or PC has no radio: install one with `add_module`, for
   example `PT-LAPTOP-NM-1W` in a laptop's slot `0`. The error says so.
 - `configure_access_point` changes the access point at once, but clients that
@@ -77,3 +86,4 @@ its current file or to a temporary file if it was never saved.
 | `setSsidBrdCastEnabled(bool)` | SSID broadcast (access points). |
 | `getCurrentApMac()` | The access point a client is associated with, empty if none. |
 | `Port.isWirelessPort()`, `Port.getMacAddress()` | Finding radios and matching the MAC. |
+| `Device.getPhysicalObject().getGlobalX/getGlobalY()` | Distances for the diagnosis and `bring_access_point`. |

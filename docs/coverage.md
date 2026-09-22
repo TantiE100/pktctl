@@ -34,7 +34,7 @@ Validation levels:
 | Simulation mode, simple PDUs, stepping, event list with decisions | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | live |
 | Complex PDUs, scenarios, event-list GUI filters, play speed | `call_ipc` | ipc |
 | Device power, fast forward, power cycling | `set_power`, `fast_forward`, `power_cycle_all` | live |
-| Wireless: access point security, client association, status | `configure_access_point`, `connect_wireless`, `wireless_status` | live |
+| Wireless: access point security, client association with range diagnosis, status | `configure_access_point`, `connect_wireless`, `wireless_status` | live |
 | Wireless: channels, radio bands, MAC filtering, WLC, cellular | `call_ipc` | ipc |
 | Server services: DHCP, DNS, HTTP/HTTPS, FTP, email, NTP, Syslog, TFTP | `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | live |
 | Server services: AAA (RADIUS/TACACS+), IoT server, NTP authentication, Syslog entries | `call_ipc` | ipc |
