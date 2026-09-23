@@ -22,10 +22,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 A wrong or damaged file fails the EAX integrity check (`PktError::Integrity`)
 instead of producing garbage.
 
-To look inside a file:
+To look inside a file, and to pack it back after editing the XML:
 
 ```sh
 cargo run -p pktfile --example pkt2xml -- lab.pkt > lab.xml
+cargo run -p pktfile --example xml2pkt -- lab.xml lab.pkt
 ```
 
 ## Physical workspace edits
