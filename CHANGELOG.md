@@ -7,6 +7,8 @@ share one version.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-27
+
 ### Added
 
 - Releases: a `vX.Y.Z` tag builds pktctl for macOS (Apple Silicon and Intel),
