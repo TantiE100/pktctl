@@ -16,6 +16,7 @@ pub struct McpClient {
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
     next_id: u64,
+    output_schemas: Option<Json>,
 }
 
 impl McpClient {
@@ -47,6 +48,7 @@ impl McpClient {
             stdin,
             stdout,
             next_id: 1,
+            output_schemas: None,
         };
         client.initialize().await;
         client
@@ -88,11 +90,43 @@ impl McpClient {
     }
 
     pub async fn call_tool(&mut self, name: &str, arguments: Json) -> Json {
-        self.request(
-            "tools/call",
-            json!({ "name": name, "arguments": arguments }),
-        )
-        .await
+        let result = self
+            .request(
+                "tools/call",
+                json!({ "name": name, "arguments": arguments }),
+            )
+            .await;
+        if result["isError"] != true
+            && let Some(content) = result.get("structuredContent")
+        {
+            let schema = self.output_schema(name).await;
+            let mut missing = Vec::new();
+            missing_required(content, &schema, &schema, "", &mut missing);
+            assert!(
+                missing.is_empty(),
+                "{name} returned content its outputSchema rejects, missing required {missing:?}: {content}"
+            );
+        }
+        result
+    }
+
+    async fn output_schema(&mut self, name: &str) -> Json {
+        if self.output_schemas.is_none() {
+            let listing = self.request("tools/list", json!({})).await;
+            let schemas = listing["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tool| {
+                    (
+                        tool["name"].as_str().unwrap().to_owned(),
+                        tool["outputSchema"].clone(),
+                    )
+                })
+                .collect();
+            self.output_schemas = Some(Json::Object(schemas));
+        }
+        self.output_schemas.as_ref().unwrap()[name].clone()
     }
 
     async fn send(&mut self, message: Json) {
@@ -100,5 +134,46 @@ impl McpClient {
         line.push('\n');
         self.stdin.write_all(line.as_bytes()).await.unwrap();
         self.stdin.flush().await.unwrap();
+    }
+}
+
+fn missing_required(
+    value: &Json,
+    schema: &Json,
+    root: &Json,
+    path: &str,
+    missing: &mut Vec<String>,
+) {
+    if let Some(reference) = schema["$ref"].as_str() {
+        let name = reference.rsplit('/').next().unwrap();
+        let target = if root["$defs"][name].is_null() {
+            &root["definitions"][name]
+        } else {
+            &root["$defs"][name]
+        };
+        return missing_required(value, target, root, path, missing);
+    }
+    if let Some(object) = value.as_object() {
+        for key in schema["required"].as_array().into_iter().flatten() {
+            let key = key.as_str().unwrap();
+            if !object.contains_key(key) {
+                missing.push(format!("{path}/{key}"));
+            }
+        }
+        if let Some(properties) = schema["properties"].as_object() {
+            for (key, property) in properties {
+                if let Some(child) = object.get(key) {
+                    missing_required(child, property, root, &format!("{path}/{key}"), missing);
+                }
+            }
+        }
+    }
+    if let (Some(items), Some(array)) = (schema.get("items"), value.as_array()) {
+        for (index, item) in array.iter().enumerate() {
+            missing_required(item, items, root, &format!("{path}/{index}"), missing);
+        }
+    }
+    for part in schema["allOf"].as_array().into_iter().flatten() {
+        missing_required(value, part, root, path, missing);
     }
 }

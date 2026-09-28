@@ -39,7 +39,7 @@ pub struct Port {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection: Option<Connection>,
     /// A radio port with a wireless association instead of a cable.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wireless: bool,
 }
 
