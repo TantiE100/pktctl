@@ -1,0 +1,138 @@
+name: Release
+
+# A `vX.Y.Z` tag builds pktctl for every platform, attests where each archive came
+# from and publishes a GitHub release with the CHANGELOG section of that version.
+# Pull requests that touch the release machinery, and manual runs, do everything
+# but publish: the archives are left as workflow artifacts to try out.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - tools/release/**
+      - Cargo.toml
+      - Cargo.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: Version and notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "version=$(tools/release/release.sh version)" >> "$GITHUB_OUTPUT"
+      - name: Tag matches Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/')
+        run: tools/release/release.sh check-tag "$GITHUB_REF_NAME"
+      - name: CHANGELOG has a section for this version
+        run: tools/release/release.sh notes "${{ steps.version.outputs.version }}" > notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes.md
+
+  checks:
+    name: CI
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: ${{ matrix.target }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            smoke: ""
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            smoke: arch -x86_64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            smoke: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            smoke: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            smoke: ""
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Swift ships with macOS from 11 on; an older deployment target links the Swift
+      # libraries through @rpath and the Intel binary fails to launch.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Screen capture libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev libwayland-dev libxkbcommon-dev libpipewire-0.3-dev libegl1-mesa-dev libgbm-dev libgl1-mesa-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - run: cargo build --release --locked -p pktctl --target ${{ matrix.target }}
+      - name: The binary starts
+        run: ${{ matrix.smoke }} target/${{ matrix.target }}/release/pktctl --version
+      - id: package
+        run: echo "archive=$(tools/release/release.sh package ${{ matrix.target }} dist)" >> "$GITHUB_OUTPUT"
+      - name: Attest where the archive came from
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.package.outputs.archive }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pktctl-${{ matrix.target }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [verify, checks, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          mv notes.md ../notes.md
+          sha256sum pktctl-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          --title "pktctl ${{ needs.verify.outputs.version }}"
+          --notes-file notes.md
+          --verify-tag
+          dist/*

@@ -36,5 +36,13 @@ ptmp = { workspace = true, features = ["fake"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["process", "test-util"] }
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }{ archive-suffix }"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 [lints]
 workspace = true
