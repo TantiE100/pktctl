@@ -7,6 +7,8 @@ share one version.
 
 ## Unreleased
 
+## 0.2.1 - 2026-09-27
+
 ### Added
 
 - Releases also publish `ptmp`, `pktfile` and `pktctl` to crates.io, through
