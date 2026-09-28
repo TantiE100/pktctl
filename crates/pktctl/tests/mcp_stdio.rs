@@ -734,6 +734,23 @@ async fn advertises_every_feature_tool_with_schemas() {
         run_cli["inputSchema"]["required"],
         json!(["device", "command"])
     );
+
+    let not_objects: Vec<&str> = tools["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|tool| {
+            tool["inputSchema"]["type"] != "object"
+                || tool
+                    .get("outputSchema")
+                    .is_some_and(|schema| schema["type"] != "object")
+        })
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        not_objects.is_empty(),
+        "MCP requires object schemas, and the TypeScript SDK rejects the whole tools/list otherwise: {not_objects:?}"
+    );
 }
 
 #[tokio::test]

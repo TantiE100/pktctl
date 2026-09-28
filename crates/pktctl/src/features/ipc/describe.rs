@@ -66,8 +66,11 @@ pub struct Overview {
     pub hint: String,
 }
 
+/// Every variant is an object, but schemars describes an untagged enum as a bare
+/// `anyOf`; MCP requires `"type": "object"` at the root of an output schema.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
+#[schemars(extend("type" = "object"))]
 pub enum Description {
     Class(ClassInfo),
     Enum(EnumInfo),
