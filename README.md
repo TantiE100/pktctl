@@ -10,7 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TantiE100/pktctl/actions/workflows/ci.yml"><img src="https://github.com/TantiE100/pktctl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F2A33A" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/rust-1.88%2B-2A2F37" alt="Rust 1.88 or newer">
   <img src="https://img.shields.io/badge/Packet%20Tracer-9.0.1-2A2F37" alt="Packet Tracer 9.0.1">
