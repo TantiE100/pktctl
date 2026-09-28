@@ -19,6 +19,13 @@ share one version.
   generator split the printed Java types on every comma, so
   `OSPFAreaNetwork.setIpAndMask(Pair<IPAddress,IPAddress>)` came out with two
   parameters and a parameter named `Pair<IPAddress`.
+- Seven tools could return structured content their own `outputSchema`
+  rejected, so clients that validate it (Claude Code among them) turned a
+  successful call into an error: `list_ports`, `configure_ios`, `list_models`,
+  `list_simulation_events`, `add_module`, `remove_module` and
+  `remove_location` left out fields the schema marked as required whenever they
+  were empty. Those fields are optional in the schema now, and the MCP E2E
+  client checks every tool result against its `outputSchema`.
 
 ## 0.1.0 - 2026-09-22
 

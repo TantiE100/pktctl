@@ -35,7 +35,7 @@ pub struct CatalogRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Catalog {
     pub devices: Vec<Model>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub modules: Vec<Model>,
 }
 

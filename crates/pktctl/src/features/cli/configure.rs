@@ -36,7 +36,7 @@ pub struct ConfigureIosRequest {
 pub struct CommandOutcome {
     pub command: String,
     pub status: CommandStatus,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub output: String,
 }
 

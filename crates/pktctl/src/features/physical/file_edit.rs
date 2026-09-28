@@ -34,7 +34,7 @@ pub struct RemoveLocationRequest {
 pub struct LocationRemoved {
     pub removed: String,
     /// Power Distribution Devices that were inside and were removed with it.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub power_units_removed: Vec<String>,
     /// The temporary copy Packet Tracer now has open. Your own file is untouched: save
     /// with `save_network` and a path to keep the change there.

@@ -45,13 +45,13 @@ pub struct SimulationEvent {
     pub from: Option<String>,
     /// `ICMP`, `ARP`, `STP`, `DHCP`, ...
     pub protocol: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub source: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub destination: String,
     /// `accepted`, `dropped`, `buffered`, `in_transit`, `collided`.
     pub status: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub decisions: Vec<String>,
 }
 
