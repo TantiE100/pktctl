@@ -11,6 +11,9 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Status {
     pub connected: bool,
+    /// Where Packet Tracer answered, for example `127.0.0.1:39001` after a restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addr: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pt_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,6 +35,7 @@ pub async fn check<P: PacketTracer>(packet_tracer: &P) -> Status {
     match counts.await {
         Ok((version, devices, links)) => Status {
             connected: true,
+            addr: packet_tracer.address(),
             pt_version: Some(version),
             devices: Some(devices),
             links: Some(links),
@@ -39,6 +43,7 @@ pub async fn check<P: PacketTracer>(packet_tracer: &P) -> Status {
         },
         Err(error) => Status {
             connected: false,
+            addr: None,
             pt_version: None,
             devices: None,
             links: None,
@@ -86,6 +91,7 @@ mod tests {
             check(&packet_tracer).await,
             Status {
                 connected: true,
+                addr: None,
                 pt_version: Some("9.0.1.0858".into()),
                 devices: Some(11),
                 links: Some(9),

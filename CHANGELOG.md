@@ -7,6 +7,14 @@ share one version.
 
 ## Unreleased
 
+### Added
+
+- Without `PKTCTL_ADDR`, pktctl looks for Packet Tracer on ports 39000 to 39009
+  and connects to the first one where the PTMP handshake with its credentials
+  succeeds. Packet Tracer moves to 39001 when 39000 is still taken, for example
+  right after a crash, and pktctl now follows it without a restart. `status`
+  reports the address in `addr`.
+
 ### Changed
 
 - The README is organized for new users: an introduction, installation in five
@@ -30,6 +38,11 @@ share one version.
   since Packet Tracer stores no line width. `list_drawings` lists rectangles too.
 - `call_ipc` refuses `LogicalWorkspace.get{Ellipse,Rect,Line,Polygon}ItemData`,
   which crash Packet Tracer 9.0.1.
+- A PTMP session kept its socket open forever once Packet Tracer went away: the
+  writer task waited on its queue and never released its half of the
+  connection. Besides leaking a descriptor per lost connection, the half-closed
+  sockets held port 39000 after a Packet Tracer crash, which is what pushed the
+  restarted Packet Tracer to 39001. The writer now stops when the session closes.
 - `save_network` checks that the target folder exists before saving. A missing
   folder made Packet Tracer show a dialog that blocked every IPC call until
   someone clicked OK.

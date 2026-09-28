@@ -23,6 +23,11 @@ pub trait PacketTracer: Send + Sync + 'static {
 
     fn version(&self) -> impl Future<Output = Result<String, PtError>> + Send;
 
+    /// Where the connection to Packet Tracer is, once there is one.
+    fn address(&self) -> Option<String> {
+        None
+    }
+
     fn subscribe(
         &self,
         subscription: Subscription,

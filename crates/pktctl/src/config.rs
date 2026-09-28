@@ -3,6 +3,10 @@ use std::{path::PathBuf, time::Duration};
 use ptmp::{Credentials, SessionConfig};
 
 pub const DEFAULT_ADDR: &str = "127.0.0.1:39000";
+/// Without `PKTCTL_ADDR`, the ports tried in order. Packet Tracer listens on 39000, or
+/// on the next free port when 39000 is still taken, for example right after a crash.
+pub const DEFAULT_PORTS: std::ops::RangeInclusive<u16> = 39000..=39009;
+const DEFAULT_HOST: &str = "127.0.0.1";
 
 pub mod env {
     pub const ADDR: &str = "PKTCTL_ADDR";
@@ -26,6 +30,9 @@ pub struct SetupSettings {
 pub struct Config {
     pub session: SessionConfig,
     pub setup: SetupSettings,
+    /// Where to look for Packet Tracer, in order: `PKTCTL_ADDR` alone when set,
+    /// otherwise every port of `DEFAULT_PORTS` on this computer.
+    pub addresses: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -52,7 +59,18 @@ impl Config {
             app_id: required(env::APP_ID)?,
             secret: required(env::SECRET)?,
         };
-        let addr = lookup(env::ADDR).unwrap_or_else(|| DEFAULT_ADDR.to_owned());
+        let addresses = lookup(env::ADDR)
+            .map(|addr| addr.trim().to_owned())
+            .filter(|addr| !addr.is_empty())
+            .map_or_else(
+                || {
+                    DEFAULT_PORTS
+                        .map(|port| format!("{DEFAULT_HOST}:{port}"))
+                        .collect()
+                },
+                |addr| vec![addr],
+            );
+        let addr = addresses[0].clone();
         let setup = SetupSettings {
             credentials: credentials.clone(),
             packet_tracer_home: lookup(env::PT_HOME).map(PathBuf::from),
@@ -81,7 +99,11 @@ impl Config {
             session.call_timeout = Duration::from_secs(seconds);
         }
 
-        Ok(Self { session, setup })
+        Ok(Self {
+            session,
+            setup,
+            addresses,
+        })
     }
 }
 
@@ -104,6 +126,9 @@ mod tests {
         let config = load(&[(env::APP_ID, "app"), (env::SECRET, "key")]).unwrap();
         assert_eq!(config.session.addr, DEFAULT_ADDR);
         assert_eq!(config.session.credentials.app_id, "app");
+        assert_eq!(config.addresses.len(), DEFAULT_PORTS.len());
+        assert_eq!(config.addresses[0], DEFAULT_ADDR);
+        assert_eq!(config.addresses[9], "127.0.0.1:39009");
     }
 
     #[test]
@@ -128,6 +153,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(config.session.addr, "10.0.0.5:39001");
+        assert_eq!(config.addresses, ["10.0.0.5:39001"]);
         assert_eq!(config.session.call_timeout, Duration::from_secs(90));
     }
 

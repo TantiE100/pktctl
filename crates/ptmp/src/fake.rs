@@ -8,6 +8,7 @@ use std::{
 
 use futures::{SinkExt, StreamExt};
 use tokio::{
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     sync::broadcast,
     task::JoinHandle,
@@ -57,6 +58,7 @@ type Handler = dyn Fn(&Call) -> Reply + Send + Sync;
 pub struct FakePt {
     addr: SocketAddr,
     events: broadcast::Sender<Event>,
+    hang_ups: broadcast::Sender<()>,
     state: Arc<State>,
     server: JoinHandle<()>,
 }
@@ -66,6 +68,7 @@ struct State {
     handler: Box<Handler>,
     calls: Mutex<Vec<Call>>,
     subscriptions: Mutex<Vec<Subscription>>,
+    clients_closed: Mutex<usize>,
 }
 
 impl std::fmt::Debug for State {
@@ -84,19 +87,27 @@ impl FakePt {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
         let events = broadcast::channel(64).0;
+        let hang_ups = broadcast::channel(4).0;
         let state = Arc::new(State {
             credentials,
             handler: Box::new(handler),
             calls: Mutex::default(),
             subscriptions: Mutex::default(),
+            clients_closed: Mutex::default(),
         });
 
         let server = tokio::spawn({
             let events = events.clone();
+            let hang_ups = hang_ups.clone();
             let state = Arc::clone(&state);
             async move {
                 while let Ok((stream, _)) = listener.accept().await {
-                    tokio::spawn(serve(stream, Arc::clone(&state), events.subscribe()));
+                    tokio::spawn(serve(
+                        stream,
+                        Arc::clone(&state),
+                        events.subscribe(),
+                        hang_ups.subscribe(),
+                    ));
                 }
             }
         });
@@ -104,6 +115,7 @@ impl FakePt {
         Ok(Self {
             addr,
             events,
+            hang_ups,
             state,
             server,
         })
@@ -124,6 +136,17 @@ impl FakePt {
     pub fn subscriptions(&self) -> Vec<Subscription> {
         lock(&self.state.subscriptions).clone()
     }
+
+    /// Closes the sending side of every open connection, as Packet Tracer does when it
+    /// quits or crashes, then waits for each client to close its own side.
+    pub fn hang_up(&self) {
+        let _ = self.hang_ups.send(());
+    }
+
+    /// How many clients closed their side after `hang_up`.
+    pub fn clients_closed(&self) -> usize {
+        *lock(&self.state.clients_closed)
+    }
 }
 
 impl Drop for FakePt {
@@ -136,7 +159,12 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-async fn serve(stream: TcpStream, state: Arc<State>, mut emitted: broadcast::Receiver<Event>) {
+async fn serve(
+    stream: TcpStream,
+    state: Arc<State>,
+    mut emitted: broadcast::Receiver<Event>,
+    mut hang_up: broadcast::Receiver<()>,
+) {
     let mut transport = Framed::new(stream, FrameCodec);
     if !authenticate(&mut transport, &state.credentials).await {
         return;
@@ -170,6 +198,12 @@ async fn serve(stream: TcpStream, state: Arc<State>, mut emitted: broadcast::Rec
             event = emitted.recv() => {
                 let Ok(event) = event else { continue };
                 vec![Message::IpcEvent(event)]
+            }
+            _ = hang_up.recv() => {
+                let _ = transport.get_mut().shutdown().await;
+                while let Some(Ok(_)) = transport.next().await {}
+                *lock(&state.clients_closed) += 1;
+                return;
             }
         };
 

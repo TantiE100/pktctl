@@ -27,6 +27,22 @@ async fn eleven_devices() -> FakePt {
 }
 
 #[tokio::test]
+async fn lets_go_of_the_socket_when_packet_tracer_hangs_up() {
+    let pt = eleven_devices().await;
+    let session = Session::connect(&config_for(&pt)).await.unwrap();
+    session.call(device_count()).await.unwrap();
+    pt.hang_up();
+    for _ in 0..200 {
+        if pt.clients_closed() == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(session.is_closed());
+    assert_eq!(pt.clients_closed(), 1, "the session kept its socket open");
+}
+
+#[tokio::test]
 async fn negotiates_and_reports_packet_tracer_version() {
     let pt = eleven_devices().await;
     let session = Session::connect(&config_for(&pt)).await.unwrap();
