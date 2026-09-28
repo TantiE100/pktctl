@@ -7,6 +7,13 @@ share one version.
 
 ## Unreleased
 
+### Fixed
+
+- `describe_ipc` advertised an output schema without `"type": "object"` at its
+  root, which MCP requires. Clients built on the MCP TypeScript SDK, such as
+  `mcp-proxy`, rejected the whole `tools/list` because of it. The MCP E2E test
+  now checks that every tool's input and output schema is an object.
+
 ## 0.2.1 - 2026-09-27
 
 ### Added
