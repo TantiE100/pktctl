@@ -26,7 +26,11 @@ with fresh calls:
   both input and output. Packet Tracer may round a new device's center by one
   pixel.
 - Packet Tracer counts infrastructure objects as devices too; a network with a
-  rack always contains a `Power Distribution Device`.
+  rack always contains a `Power Distribution Device`. Adding a router such as a
+  2911 places it in the rack of the main wiring closet, and Packet Tracer adds
+  the rack's power strip with it (a 2960 alone does not). It has no ports or
+  links, the router is powered either way, and pktctl leaves it alone: only the
+  extra strips Packet Tracer adds when a file is reopened are removed.
 
 ## Behaviour
 
