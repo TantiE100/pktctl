@@ -1,84 +1,261 @@
-# pktctl
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo-light.svg" alt="pktctl" height="96">
+  </picture>
+</p>
 
-MCP server for Cisco Packet Tracer. It talks to a running Packet Tracer through
-PTMP, the native IPC protocol Packet Tracer ships for external applications, so
-there is no extension window to keep open and no polling bridge in between.
+<p align="center">
+  <strong>The MCP server that puts Cisco Packet Tracer under your AI agent's control.</strong>
+</p>
 
-- One static binary, no runtime to install.
-- Calls round-trip in well under a millisecond and can be pipelined.
-- Errors come back typed (`Device: IPC Cache entry`), never as a frozen modal.
+<p align="center">
+  <a href="https://github.com/TantiE100/pktctl/actions/workflows/ci.yml"><img src="https://github.com/TantiE100/pktctl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F2A33A" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/rust-1.88%2B-2A2F37" alt="Rust 1.88 or newer">
+  <img src="https://img.shields.io/badge/Packet%20Tracer-9.0.1-2A2F37" alt="Packet Tracer 9.0.1">
+</p>
 
-Requires Packet Tracer 9.0.1 with IPC enabled. It builds on Linux, macOS and
-Windows, but every live check so far ran on macOS; the paths in
-[docs/features/exapp-registration.md](docs/features/exapp-registration.md) note
-where the registration file goes on each system.
+---
 
-## Tools
+## Introduction
 
-| Tool | What it does |
+pktctl lets an AI agent build, configure and test networks in Cisco Packet
+Tracer the way a person would, but through a programmatic interface instead of
+the mouse. You describe the network you want; the agent places the devices,
+cables them, types the IOS configuration at each console, runs `ping` from the
+end hosts and reads the results back, all inside the Packet Tracer window you
+already have open.
+
+It is a server for the [Model Context Protocol](https://modelcontextprotocol.io)
+(MCP), the open standard that AI clients such as Claude Code, Claude Desktop
+and Cursor use to call external tools. pktctl gives those clients 72 tools
+that cover Packet Tracer's logical and physical workspaces, simulation mode,
+end-device applications and activities, plus direct access to the complete
+IPC API for anything else.
+
+pktctl talks to Packet Tracer through **PTMP**, the native protocol Packet
+Tracer offers to registered external applications. That choice shapes how it
+behaves:
+
+- **Nothing to keep open inside Packet Tracer.** There is no extension window
+  and no polling bridge between the agent and the simulator; a single
+  registration is enough.
+- **Fast and precise.** Calls round-trip in well under a millisecond, and
+  `call_ipc` checks every argument against the official API before sending it.
+- **Readable failures.** Errors come back as typed messages the agent can act
+  on (`Device: IPC Cache entry`), never as a modal dialog that freezes the
+  application.
+- **One static binary.** No runtime, interpreter or package manager is needed
+  to run it.
+
+pktctl is useful to students practicing CCNA labs, to instructors preparing
+and checking activities, and to anyone who wants to automate or document
+network scenarios in Packet Tracer.
+
+### An example
+
+For a lab with three 2960 switches, VLANs 10, 20 and 30 spread across them,
+802.1Q trunks and a management SVI on each switch, an agent using pktctl
+placed and cabled every device, configured the switches and the PCs, and
+verified the result with pings and Telnet sessions:
+
+<p align="center">
+  <img src="docs/assets/example-vlan-lab.png" alt="Three switches joined by 802.1Q trunks, with twelve PCs grouped by VLAN" width="720">
+</p>
+
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [What you can do](#what-you-can-do)
+- [How it works](#how-it-works)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Requirements
+
+| Requirement | Notes |
 |---|---|
-| `setup_exapp` | Creates the one-time Packet Tracer registration file for pktctl. |
-| `status` | Is Packet Tracer reachable? Version, device and link counts, or what to fix. |
-| `list_devices` | Every device with its name, model, kind and position. |
-| `add_device`, `rename_device`, `move_device`, `remove_device` | Build and reshape the topology. |
-| `list_ports`, `list_links`, `connect`, `disconnect` | Inspect ports and cable devices together, with CCNA cable selection. |
-| `list_models` | Device and module models available in this Packet Tracer. |
-| `run_cli` | Types one IOS command at a router or switch console and returns its complete output, `ping` and `traceroute` included; questions such as `[confirm]` stay open for an answer. |
-| `configure_ios` | Applies a block of IOS configuration, stops at the first rejected command, optionally saves. |
-| `list_slots`, `add_module`, `remove_module` | Inspect slots and install cards such as HWIC-2T, with the power cycle handled. |
-| `configure_host`, `configure_host_ipv6`, `set_host_firewall` | IPv4 (static or DHCP) and IPv6 (static, SLAAC or off) on PCs and servers, with CCNA sanity checks; their inbound firewalls. |
-| `browse_web`, `configure_email`, `send_email`, `receive_email`, `vpn_client`, `host_files` | The Desktop apps: Web Browser, Email, VPN and Text Editor. |
-| `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
-| `screenshot`, `add_note`, `list_notes`, `remove_note`, `draw`, `list_drawings`, `remove_drawing` | See the canvas, annotate it and draw circles and lines on it. |
-| `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
-| `list_locations`, `add_location`, `rename_location`, `remove_location`, `arrange_devices`, `set_background`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
-| `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | Simulation mode with the per-hop event list and Packet Tracer's own explanations. |
-| `set_power`, `fast_forward`, `power_cycle_all` | Power and Realtime time controls; `fast_forward` makes STP, DHCP and routing converge at once. |
-| `configure_access_point`, `connect_wireless`, `wireless_status` | Wi-Fi: SSID and WPA2/WPA/WEP on access points, clients that really associate. |
-| `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | Server services: DHCP pools, DNS records, web pages, FTP and email accounts, and every service switch. |
-| `get_preferences`, `set_preferences` | Packet Tracer's Preferences: labels, link lights, auto cabling, dialog tabs, toolbars and more. |
-| `watch_events` | Live IPC events: devices, links, console output, simulation and 200 more. |
-| `activity_status`, `activity_instructions`, `check_activity`, `reset_activity`, `unlock_activity`, `network_description` | Activities (`.pka`): instructions, progress, score, connectivity checks; file descriptions. |
-| `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
+| Cisco Packet Tracer 9.0.1 | Available at no cost from [Cisco Networking Academy](https://www.netacad.com/cisco-packet-tracer). |
+| Rust 1.88 or newer | Needed to build pktctl. Install it with [rustup](https://rustup.rs). |
+| An MCP client | Claude Code, Claude Desktop, Cursor or any client that runs stdio MCP servers. |
 
-Dedicated tools cover everyday work; `call_ipc` reaches everything else.
-[docs/coverage.md](docs/coverage.md) tracks which Packet Tracer areas have a
-dedicated tool and how each one was validated.
+pktctl builds on Linux, macOS and Windows. Every live validation so far ran on
+macOS; the registration paths for the other systems are described in
+[ExApp registration](docs/features/exapp-registration.md).
 
-## Quick start
+## Installation
 
-1. Build: `make release`.
-2. Pick an app id and a random secret (`openssl rand -hex 24`) and add pktctl to
-   your MCP client:
+Installation takes five steps. Only the fourth one happens inside Packet
+Tracer, and it is done once.
+
+### 1. Install the binary
+
+```bash
+cargo install --git https://github.com/TantiE100/pktctl pktctl --locked
+```
+
+Cargo builds pktctl and places it in `~/.cargo/bin/pktctl`
+(`%USERPROFILE%\.cargo\bin\pktctl.exe` on Windows). Check it with
+`pktctl --version`.
+
+To build from a clone instead, run `make release` in the repository; the
+binary is written to `target/release/pktctl`.
+
+### 2. Choose an app id and a secret
+
+Packet Tracer identifies external applications by an id and authenticates them
+with a shared secret. Pick any reverse-domain id, such as `dev.pktctl`, and
+generate a random secret:
+
+```bash
+openssl rand -hex 24
+```
+
+Keep the secret private: it grants full control of Packet Tracer.
+
+### 3. Add pktctl to your MCP client
+
+<details open>
+<summary><strong>Claude Code</strong></summary>
+
+```bash
+claude mcp add pktctl --scope user \
+  -e PKTCTL_APP_ID=dev.pktctl \
+  -e PKTCTL_SECRET=your-random-secret \
+  -- "$HOME/.cargo/bin/pktctl"
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Desktop</strong></summary>
+
+Edit `claude_desktop_config.json`
+(`~/Library/Application Support/Claude/` on macOS,
+`%APPDATA%\Claude\` on Windows) and restart Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "pktctl": {
-      "command": "/path/to/pktctl/target/release/pktctl",
+      "command": "/Users/you/.cargo/bin/pktctl",
       "env": {
         "PKTCTL_APP_ID": "dev.pktctl",
-        "PKTCTL_SECRET": "your random secret"
+        "PKTCTL_SECRET": "your-random-secret"
       }
     }
   }
 }
 ```
 
-3. Ask the agent to run `setup_exapp`, then register the `.pta` it creates in
-   Packet Tracer once (**Extensions → IPC → Configure Apps → Add**). Details in
-   [docs/features/exapp-registration.md](docs/features/exapp-registration.md).
+</details>
+
+<details>
+<summary><strong>Cursor and other clients</strong></summary>
+
+Most clients accept the same `mcpServers` block shown for Claude Desktop; in
+Cursor it goes in `~/.cursor/mcp.json`. Use the absolute path to the binary,
+because clients do not always inherit your shell's `PATH`.
+
+</details>
+
+### 4. Register pktctl in Packet Tracer
+
+1. Ask the agent: *"Run setup_exapp."* pktctl writes
+   the registration file `~/.config/pktctl/pktctl.pta`.
+2. In Packet Tracer, open **Extensions → IPC → Configure Apps**, choose
+   **Add**, select that file and confirm with **Ok**.
+3. Quit Packet Tracer normally once (File → Exit). Packet Tracer only saves
+   its list of registered apps when it closes cleanly.
+
+The complete procedure, including a manual alternative, is in
+[ExApp registration](docs/features/exapp-registration.md).
+
+### 5. Verify the connection
+
+Ask the agent: *"Check the pktctl status."* A reply with `connected: true`,
+the Packet Tracer version and the device count means everything works. If
+not, the reply explains what to fix; see [Troubleshooting](#troubleshooting).
+
+## What you can do
+
+The tools are grouped by the job they do. A few example requests for each
+group:
+
+| Area | What pktctl handles | Try asking |
+|---|---|---|
+| Topology | Adding, renaming, moving and cabling devices, installing modules, notes and drawings on the canvas | *"Add a 2911 router and two 2960 switches and cable them."* |
+| IOS | Running any command at a router or switch console and applying configuration blocks, with confirmations answered | *"Configure OSPF area 0 on both routers and show the neighbors."* |
+| End devices | IPv4 and IPv6 addressing, DHCP, firewalls, Command Prompt, web browser, email, VPN and files | *"Give the PCs addresses by DHCP and ping the server from each one."* |
+| Servers | DHCP pools, DNS records, web pages, FTP and email accounts | *"Publish intranet.lab.local on the server and browse to it from PC1."* |
+| Simulation | Simulation mode, PDUs, stepping and the per-hop event list with Packet Tracer's explanations | *"Send a ping from PC1 to PC4 in simulation and explain each hop."* |
+| Physical workspace | Cities, buildings, closets, racks and where each device sits | *"Put the switches in a rack in the wiring closet."* |
+| Wireless | Access point security and client association | *"Secure the access point with WPA2 and connect the laptops."* |
+| Activities | `.pka` instructions, progress, score and connectivity checks | *"How much of this activity is complete, and what is missing?"* |
+| Everything else | The full IPC API: 346 classes and 3111 methods, searchable and callable | *"Find the IPC method that reads the ARP table of R1."* |
+
+The complete list of the 72 tools is in [docs/tools.md](docs/tools.md), and
+[docs/coverage.md](docs/coverage.md) records how each area was validated.
+
+## How it works
+
+```
+AI client  ──MCP over stdio──▶  pktctl  ──PTMP over TCP 39000──▶  Packet Tracer
+```
+
+The MCP client starts pktctl as a child process. pktctl authenticates to
+Packet Tracer as a registered external application and translates each tool
+call into one or more IPC calls. When a tool needs something the IPC API does
+not offer, such as buildings or furniture in the physical workspace, pktctl
+edits the saved `.pkt` file and reopens it. The design is described in
+[docs/architecture.md](docs/architecture.md) and the wire format in
+[docs/reference/ptmp.md](docs/reference/ptmp.md).
+
+## Configuration
+
+pktctl reads its settings from environment variables:
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `PKTCTL_APP_ID` | yes | | App id registered in Packet Tracer. |
+| `PKTCTL_SECRET` | yes | | Shared secret registered in Packet Tracer. |
+| `PKTCTL_ADDR` | no | `127.0.0.1:39000` | Address of Packet Tracer's IPC listener. |
+| `PKTCTL_CALL_TIMEOUT_SECS` | no | `30` | Time limit for a single IPC call. |
+| `PKTCTL_PT_HOME` | no | usual install folders | Packet Tracer installation, used by `setup_exapp`. |
+| `PKTCTL_SETUP_DIR` | no | `~/.config/pktctl` | Where `setup_exapp` writes the registration file. |
+| `PKTCTL_LOG` | no | `warn` | Log level, written to stderr. |
+
+## Troubleshooting
+
+| What `status` reports | Cause and fix |
+|---|---|
+| `Packet Tracer is not reachable` | Packet Tracer is closed, or its IPC listener uses another port; after a restart it has been seen on 39001. Check the port in **Extensions → IPC → Options** and set `PKTCTL_ADDR` to match, or restart Packet Tracer. |
+| `rejected app id ...` | pktctl is not registered, or `PKTCTL_SECRET` differs from the registered key. Run `setup_exapp`, register the new file and quit Packet Tracer normally once. |
+| `does not have the necessary privilege` | pktctl was registered with an older template. Register the file `setup_exapp` creates again. |
 
 ## Documentation
 
-Everything lives in [docs/](docs/README.md): architecture, features, the PTMP
-wire reference and the development workflow. Releases are listed in
-[CHANGELOG.md](CHANGELOG.md).
+The [docs/](docs/README.md) folder holds the architecture, the feature
+references, the PTMP wire reference and the development guide. Releases are
+listed in [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing
+
+Issues and pull requests are welcome. [docs/development.md](docs/development.md)
+covers the commands, the test layers, the live test suite against a running
+Packet Tracer and the branch workflow. `make check` runs the same formatting,
+lint and test steps as CI.
 
 ## License
 
-[MIT](LICENSE). Cisco, Packet Tracer and Cisco IOS are trademarks of Cisco
-Systems, Inc.; this project is an independent client and is neither affiliated
-with nor endorsed by Cisco. It ships no Packet Tracer code, files or
-documentation: you need your own installation of Packet Tracer for it to talk
-to anything.
+pktctl is released under the [MIT License](LICENSE).
+
+Cisco, Packet Tracer and Cisco IOS are trademarks of Cisco Systems, Inc. This
+project is an independent client and is neither affiliated with nor endorsed
+by Cisco. It ships no Packet Tracer code, files or documentation: you need
+your own installation of Packet Tracer for it to talk to anything.
