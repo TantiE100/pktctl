@@ -7,6 +7,8 @@ share one version.
 
 ## Unreleased
 
+## 0.2.2 - 2026-09-27
+
 ### Fixed
 
 - `describe_ipc` advertised an output schema without `"type": "object"` at its
