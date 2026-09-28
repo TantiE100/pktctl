@@ -1,0 +1,37 @@
+# Tools
+
+pktctl exposes 72 MCP tools. The dedicated tools below cover everyday work in
+Packet Tracer; `call_ipc` reaches every other method of the official IPC API.
+Each group links to the README of the feature that implements it, where the
+arguments, the results and the Packet Tracer behaviour behind them are
+documented.
+
+| Tool | What it does |
+|---|---|
+| `setup_exapp` | Creates the one-time Packet Tracer registration file for pktctl. |
+| `status` | Is Packet Tracer reachable? Version, device and link counts, or what to fix. |
+| `list_devices` | Every device with its name, model, kind and position. |
+| `add_device`, `rename_device`, `move_device`, `remove_device` | Build and reshape the topology. |
+| `list_ports`, `list_links`, `connect`, `disconnect` | Inspect ports and cable devices together, with CCNA cable selection. |
+| `list_models` | Device and module models available in this Packet Tracer. |
+| `run_cli` | Types one IOS command at a router or switch console and returns its complete output, `ping` and `traceroute` included; questions such as `[confirm]` stay open for an answer. |
+| `configure_ios` | Applies a block of IOS configuration, stops at the first rejected command, optionally saves. |
+| `list_slots`, `add_module`, `remove_module` | Inspect slots and install cards such as HWIC-2T, with the power cycle handled. |
+| `configure_host`, `configure_host_ipv6`, `set_host_firewall` | IPv4 (static or DHCP) and IPv6 (static, SLAAC or off) on PCs and servers, with CCNA sanity checks; their inbound firewalls. |
+| `browse_web`, `configure_email`, `send_email`, `receive_email`, `vpn_client`, `host_files` | The Desktop apps: Web Browser, Email, VPN and Text Editor. |
+| `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
+| `screenshot`, `add_note`, `list_notes`, `remove_note`, `draw`, `list_drawings`, `remove_drawing` | See the canvas, annotate it and draw circles and lines on it. |
+| `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
+| `list_locations`, `add_location`, `rename_location`, `remove_location`, `arrange_devices`, `set_background`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
+| `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | Simulation mode with the per-hop event list and Packet Tracer's own explanations. |
+| `set_power`, `fast_forward`, `power_cycle_all` | Power and Realtime time controls; `fast_forward` makes STP, DHCP and routing converge at once. |
+| `configure_access_point`, `connect_wireless`, `wireless_status` | Wi-Fi: SSID and WPA2/WPA/WEP on access points, clients that really associate. |
+| `list_server_services`, `set_server_service`, `configure_dhcp_server`, `configure_dns_server`, `set_web_page`, `add_server_user` | Server services: DHCP pools, DNS records, web pages, FTP and email accounts, and every service switch. |
+| `get_preferences`, `set_preferences` | Packet Tracer's Preferences: labels, link lights, auto cabling, dialog tabs, toolbars and more. |
+| `watch_events` | Live IPC events: devices, links, console output, simulation and 200 more. |
+| `activity_status`, `activity_instructions`, `check_activity`, `reset_activity`, `unlock_activity`, `network_description` | Activities (`.pka`): instructions, progress, score, connectivity checks; file descriptions. |
+| `describe_ipc`, `call_ipc` | The whole Packet Tracer IPC API (346 classes, 3111 methods), searchable and callable with exact types. |
+
+The feature READMEs are indexed in [features/](features/README.md), and
+[coverage.md](coverage.md) records which Packet Tracer areas have a dedicated
+tool and how each one was validated.
