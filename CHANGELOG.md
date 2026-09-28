@@ -9,6 +9,12 @@ share one version.
 
 ### Changed
 
+- The README is organized for new users: an introduction, installation in five
+  steps with setup for Claude Code, Claude Desktop and Cursor, the tools grouped
+  by task with example requests, configuration and troubleshooting. The full
+  tool table moved to `docs/tools.md`.
+- pktctl has a logo: an icon and wordmark for light and dark backgrounds, a
+  simplified icon for small sizes and a social preview image, in `docs/assets`.
 - The IPC index generator is a Rust crate, `tools/ipc-index`, and reads the
   class files out of the framework jar itself. It needs no JDK and no `javap`,
   and `make check` now compiles, lints and tests it with everything else.

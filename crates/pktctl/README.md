@@ -1,3 +1,5 @@
+<img src="../../docs/assets/icon.svg" alt="" height="48" align="right">
+
 # pktctl
 
 The MCP server binary. It reads its configuration from the environment, serves
