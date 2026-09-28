@@ -122,10 +122,11 @@ The three crates share one version, set in `[workspace.package]`. A tag
    Linux (x86_64 and ARM64) and Windows, checks that each binary starts,
    attests every archive's provenance, and publishes a GitHub release with the
    archives, `SHA256SUMS` and the CHANGELOG section as notes.
-4. To publish on crates.io, publish in dependency order: `ptmp`, then
-   `pktfile`, then `pktctl`. Check first with
-   `cargo package -p <crate> --list` that nothing from a Packet Tracer
-   installation slipped into the package.
+4. Publish the crates from the tagged commit, in dependency order: `ptmp`, then
+   `pktfile`, then `pktctl` (`cargo publish -p <crate>`, after a
+   `--dry-run`). Check first with `cargo package -p <crate> --list` that
+   nothing from a Packet Tracer installation slipped into the package. The
+   crates.io account needs a verified email address.
 
 `tools/release/release.sh` holds the steps the workflow runs (`version`,
 `check-tag`, `notes`, `package`), so they can be tried locally. Pull requests
