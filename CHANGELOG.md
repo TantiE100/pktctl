@@ -9,6 +9,11 @@ share one version.
 
 ### Added
 
+- Releases: a `vX.Y.Z` tag builds pktctl for macOS (Apple Silicon and Intel),
+  Linux (x86_64 and ARM64) and Windows, attests each archive's provenance and
+  publishes a GitHub release with `SHA256SUMS` and the CHANGELOG section as
+  notes. `cargo binstall pktctl` finds those archives.
+
 - Without `PKTCTL_ADDR`, pktctl looks for Packet Tracer on ports 39000 to 39009
   and connects to the first one where the PTMP handshake with its credentials
   succeeds. Packet Tracer moves to 39001 when 39000 is still taken, for example

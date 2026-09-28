@@ -45,8 +45,9 @@ behaves:
 - **Readable failures.** Errors come back as typed messages the agent can act
   on (`Device: IPC Cache entry`), never as a modal dialog that freezes the
   application.
-- **One static binary.** No runtime, interpreter or package manager is needed
-  to run it.
+- **One self-contained binary.** No runtime, interpreter or package manager is
+  needed to run it. On Linux it uses the desktop's X11, Wayland and PipeWire
+  libraries for window captures, which desktop distributions already ship.
 
 pktctl is useful to students practicing CCNA labs, to instructors preparing
 and checking activities, and to anyone who wants to automate or document
@@ -81,7 +82,7 @@ and ping and traceroute from the branch to headquarters.
 | Requirement | Notes |
 |---|---|
 | Cisco Packet Tracer 9.0.1 | Available at no cost from [Cisco Networking Academy](https://www.netacad.com/cisco-packet-tracer). |
-| Rust 1.88 or newer | Needed to build pktctl. Install it with [rustup](https://rustup.rs). |
+| Rust 1.88 or newer | Only to build from source. Install it with [rustup](https://rustup.rs). |
 | An MCP client | Claude Code, Claude Desktop, Cursor or any client that runs stdio MCP servers. |
 
 pktctl builds on Linux, macOS and Windows. Every live validation so far ran on
@@ -95,16 +96,32 @@ Tracer, and it is done once.
 
 ### 1. Install the binary
 
+**Prebuilt.** Each [release](https://github.com/TantiE100/pktctl/releases)
+carries archives for macOS 11 or newer (Apple Silicon and Intel), Linux with
+glibc 2.39 or newer (Ubuntu 24.04, Debian 13; x86_64 and ARM64) and Windows. Unpack the one for your system and put `pktctl` somewhere
+permanent, such as `~/.local/bin`. To check an archive before running it:
+
+```bash
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify pktctl-*.tar.gz --repo TantiE100/pktctl
+```
+
+The attestation proves the archive was built by this repository's release
+workflow. macOS quarantines binaries downloaded with a browser; clear the flag
+with `xattr -d com.apple.quarantine pktctl`, or download with `curl`, which does
+not set it. The binaries are not notarized by Apple.
+
+**From source.** With Rust 1.88 or newer:
+
 ```bash
 cargo install --git https://github.com/TantiE100/pktctl pktctl --locked
 ```
 
 Cargo builds pktctl and places it in `~/.cargo/bin/pktctl`
-(`%USERPROFILE%\.cargo\bin\pktctl.exe` on Windows). Check it with
-`pktctl --version`.
+(`%USERPROFILE%\.cargo\bin\pktctl.exe` on Windows). To build from a clone
+instead, run `make release`; the binary is written to `target/release/pktctl`.
 
-To build from a clone instead, run `make release` in the repository; the
-binary is written to `target/release/pktctl`.
+Either way, check it with `pktctl --version`.
 
 ### 2. Choose an app id and a secret
 
