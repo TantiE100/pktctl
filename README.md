@@ -97,8 +97,8 @@ Tracer, and it is done once.
 ### 1. Install the binary
 
 **Prebuilt.** Each [release](https://github.com/TantiE100/pktctl/releases)
-carries archives for macOS (Apple Silicon and Intel), Linux (x86_64 and ARM64)
-and Windows. Unpack the one for your system and put `pktctl` somewhere
+carries archives for macOS 11 or newer (Apple Silicon and Intel), Linux with
+glibc 2.39 or newer (Ubuntu 24.04, Debian 13; x86_64 and ARM64) and Windows. Unpack the one for your system and put `pktctl` somewhere
 permanent, such as `~/.local/bin`. To check an archive before running it:
 
 ```bash

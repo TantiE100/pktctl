@@ -85,7 +85,8 @@ Run a single test with `cargo test -p pktctl --test live -- --ignored <name>`.
 
 `screenshot` captures the Packet Tracer window with
 [xcap](https://crates.io/crates/xcap), which links against the desktop
-libraries. On Debian and Ubuntu:
+libraries. Its PipeWire bindings need PipeWire 1.0 headers, so Ubuntu 24.04,
+Debian 13 or newer; Ubuntu 22.04 cannot build it. On Debian and Ubuntu:
 
 ```bash
 sudo apt-get install -y libxcb1-dev libxrandr-dev libdbus-1-dev \
