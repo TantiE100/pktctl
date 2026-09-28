@@ -199,6 +199,20 @@ mod tests {
                 ),
                 "nothing can be called on it",
             ),
+            (
+                request(
+                    "appWindow",
+                    vec![
+                        step("getActiveWorkspace", json!([])),
+                        step("getLogicalWorkspace", json!([])),
+                        step(
+                            "getEllipseItemData",
+                            json!(["{2c56e395-4e36-4c56-b9d1-d272e1b17a17}"]),
+                        ),
+                    ],
+                ),
+                "makes Packet Tracer 9.0.1 crash",
+            ),
         ];
         for (bad, expected) in mistakes {
             let error = call_ipc(&packet_tracer, &bad).await.unwrap_err();

@@ -2,11 +2,13 @@
 
 use std::io::{Read, Write};
 
+mod canvas;
 mod eax;
 mod elements;
 mod physical;
 mod wireless;
 
+pub use canvas::{CanvasShape, Rgb, Shape, ShapeKind, add_shape, add_shape_with_id, shapes};
 pub use physical::{
     PhysicalNode, add_building, add_node, move_node, physical_nodes, remove_node, rename_node,
 };

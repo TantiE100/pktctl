@@ -20,7 +20,7 @@ documented.
 | `configure_host`, `configure_host_ipv6`, `set_host_firewall` | IPv4 (static or DHCP) and IPv6 (static, SLAAC or off) on PCs and servers, with CCNA sanity checks; their inbound firewalls. |
 | `browse_web`, `configure_email`, `send_email`, `receive_email`, `vpn_client`, `host_files` | The Desktop apps: Web Browser, Email, VPN and Text Editor. |
 | `save_network`, `open_network`, `new_network` | Files, with no dialog that could freeze Packet Tracer. |
-| `screenshot`, `add_note`, `list_notes`, `remove_note`, `draw`, `list_drawings`, `remove_drawing` | See the canvas, annotate it and draw circles and lines on it. |
+| `screenshot`, `add_note`, `list_notes`, `remove_note`, `draw`, `list_drawings`, `remove_drawing` | See the canvas, annotate it, and draw circles, rectangles and lines with outline and fill colours. |
 | `run_host_command` | Runs a Command Prompt command (ping, ipconfig, tracert) on a PC or server. |
 | `list_locations`, `add_location`, `rename_location`, `remove_location`, `arrange_devices`, `set_background`, `move_to_location`, `show_workspace` | Physical workspace: cities, buildings, closets, racks and where each device sits. |
 | `simulation_mode`, `add_pdu`, `simulation_step`, `list_simulation_events` | Simulation mode with the per-hop event list and Packet Tracer's own explanations. |

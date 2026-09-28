@@ -21,6 +21,18 @@ share one version.
 
 ### Fixed
 
+- `draw` drew circles about 0.7 times the requested size, with the given centre
+  as their top left corner, always with a black outline, and could shift both
+  circles and lines with the view's scroll. These are faults in Packet Tracer's
+  own `drawCircle` and `drawLine`, so `draw` now writes the shape into the
+  network file and reopens a temporary copy: centres, radii and colours come out
+  exact. It also draws rectangles and takes a `fill` colour; `width` is gone,
+  since Packet Tracer stores no line width. `list_drawings` lists rectangles too.
+- `call_ipc` refuses `LogicalWorkspace.get{Ellipse,Rect,Line,Polygon}ItemData`,
+  which crash Packet Tracer 9.0.1.
+- `save_network` checks that the target folder exists before saving. A missing
+  folder made Packet Tracer show a dialog that blocked every IPC call until
+  someone clicked OK.
 - A method taking a generic argument was recorded as taking two: the old
   generator split the printed Java types on every comma, so
   `OSPFAreaNetwork.setIpAndMask(Pair<IPAddress,IPAddress>)` came out with two

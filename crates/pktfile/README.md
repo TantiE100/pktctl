@@ -29,6 +29,18 @@ cargo run -p pktfile --example pkt2xml -- lab.pkt > lab.xml
 cargo run -p pktfile --example xml2pkt -- lab.xml lab.pkt
 ```
 
+## Canvas drawings
+
+| Function | Edit |
+|---|---|
+| `shapes` | Lists the `<ELLIPSE>`, `<RECTANGLE>` and `<LINE>` elements of the logical canvas with their uuid, corners, outline colour and fill. |
+| `add_shape`, `add_shape_with_id` | Appends one to its section, opening the section if it is empty or missing, in the root cluster. |
+
+Ellipses and rectangles store their bounding box (`TopLeftX` ... `BottomRightY`),
+the fill colour in `Color`, and `<Filled OUTLINECOLOR="#rrggbb"
+OUTLINED="true">0|1</Filled>`; lines store their ends and one `Color`. The
+format has no line width.
+
 ## Physical workspace edits
 
 Packet Tracer's IPC API cannot rename, create or delete some physical

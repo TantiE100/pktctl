@@ -3,11 +3,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    features::paths::logical_workspace,
+    features::{
+        network_file::edit_saved_network, network_file::file_error, paths::logical_workspace,
+    },
     packet_tracer::{PacketTracer, PtError, expect_text},
 };
 
-const DEFAULT_WIDTH: i32 = 2;
 const DEFAULT_RADIUS: i32 = 60;
 
 /// Colours by name, so a drawing can be asked for in words.
@@ -29,33 +30,37 @@ pub enum Drawing {
     /// A circle, to ring a subnet or a group of devices.
     #[default]
     Circle,
+    /// A rectangle, to frame an area such as a building, a floor or a site.
+    Rectangle,
     /// A straight line, to mark a boundary or point at something.
     Line,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct DrawRequest {
-    /// `circle` (default) or `line`.
+    /// `circle` (default), `rectangle` or `line`.
     #[serde(default)]
     pub shape: Drawing,
-    /// Circle: the centre. Line: where it starts. Canvas coordinates, as in `add_device`.
+    /// Circle: the centre. Rectangle: one corner. Line: where it starts. Canvas
+    /// coordinates, as in `add_device`.
     pub x: i32,
     pub y: i32,
-    /// Line: where it ends.
+    /// Rectangle: the opposite corner. Line: where it ends.
     #[serde(default)]
     pub to_x: Option<i32>,
     #[serde(default)]
     pub to_y: Option<i32>,
-    /// Circle: how wide it is. Defaults to 60.
+    /// Circle: its radius. Defaults to 60.
     #[serde(default)]
     pub radius: Option<i32>,
-    /// Line thickness. Defaults to 2.
-    #[serde(default)]
-    pub width: Option<i32>,
-    /// `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `gray`, `black`, `white`, or
-    /// a `#rrggbb` value. Defaults to blue.
+    /// Outline colour: `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `gray`,
+    /// `black`, `white`, or a `#rrggbb` value. Defaults to blue.
     #[serde(default)]
     pub color: Option<String>,
+    /// Circle and rectangle: fill them with this colour, named or `#rrggbb`. Left
+    /// unfilled when omitted.
+    #[serde(default)]
+    pub fill: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -63,12 +68,19 @@ pub struct Drawn {
     pub id: String,
     pub shape: Drawing,
     pub color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    /// The temporary copy Packet Tracer now has open: drawings go through the network
+    /// file. Your own file is untouched: save with `save_network` and a path to keep the
+    /// drawing there.
+    pub file: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct DrawingItem {
     pub id: String,
     pub shape: Drawing,
+    /// Centre of the drawing on the canvas.
     pub x: i64,
     pub y: i64,
 }
@@ -78,59 +90,103 @@ pub struct DrawingList {
     pub drawings: Vec<DrawingItem>,
 }
 
+/// Packet Tracer's own `drawCircle` and `drawLine` read their coordinates as window
+/// pixels, treat the radius as the diagonal of the bounding box, and paint every
+/// circle's outline black whatever colour is given. Drawings are therefore written into
+/// the network file, where Packet Tracer stores them exactly.
 pub async fn draw<P: PacketTracer>(
     packet_tracer: &P,
     request: &DrawRequest,
 ) -> Result<Drawn, PtError> {
-    let (red, green, blue) = colour(request.color.as_deref())?;
-    let layer = layer(packet_tracer).await?;
-    let call = match request.shape {
-        Drawing::Circle => logical_workspace().method(
-            "drawCircle",
-            [
-                Value::Int(request.x),
-                Value::Int(request.y),
-                Value::Double(layer),
-                Value::Int(request.radius.unwrap_or(DEFAULT_RADIUS)),
-                Value::Int(red),
-                Value::Int(green),
-                Value::Int(blue),
-            ],
-        ),
-        Drawing::Line => {
-            let (Some(to_x), Some(to_y)) = (request.to_x, request.to_y) else {
+    let outline = rgb(colour(request.color.as_deref())?);
+    let fill = match request.fill.as_deref().map(str::trim) {
+        Some(name) if !name.is_empty() => {
+            if request.shape == Drawing::Line {
                 return Err(PtError::InvalidInput(
-                    "a line needs to_x and to_y as well".into(),
+                    "a line cannot be filled; fill applies to circles and rectangles".into(),
                 ));
-            };
-            logical_workspace().method(
-                "drawLine",
-                [
-                    Value::Int(request.x),
-                    Value::Int(request.y),
-                    Value::Int(to_x),
-                    Value::Int(to_y),
-                    Value::Double(layer),
-                    Value::Int(request.width.unwrap_or(DEFAULT_WIDTH)),
-                    Value::Int(red),
-                    Value::Int(green),
-                    Value::Int(blue),
-                ],
-            )
+            }
+            Some(rgb(colour(Some(name))?))
         }
+        _ => None,
     };
-    let id = packet_tracer.call(call).await?;
-    Ok(Drawn {
-        id: expect_text(&id, "drawing id")?,
-        shape: request.shape,
-        color: format!("#{red:02x}{green:02x}{blue:02x}"),
+    let (kind, start, end) = geometry(request)?;
+    let shape = pktfile::Shape {
+        kind,
+        start,
+        end,
+        outline,
+        fill,
+    };
+    let mut id = String::new();
+    let opened = edit_saved_network(packet_tracer, |xml| {
+        let (edited, uuid) = pktfile::add_shape(xml, &shape).map_err(|error| file_error(&error))?;
+        id = uuid;
+        Ok(edited)
     })
+    .await?;
+    Ok(Drawn {
+        id,
+        shape: request.shape,
+        color: outline.hex().to_ascii_lowercase(),
+        fill: fill.map(|fill| fill.hex().to_ascii_lowercase()),
+        file: opened,
+    })
+}
+
+type Point = (i32, i32);
+
+fn geometry(request: &DrawRequest) -> Result<(pktfile::ShapeKind, Point, Point), PtError> {
+    let corner = || match (request.to_x, request.to_y) {
+        (Some(to_x), Some(to_y)) => Ok((to_x, to_y)),
+        _ => Err(PtError::InvalidInput(format!(
+            "a {} needs to_x and to_y as well",
+            match request.shape {
+                Drawing::Rectangle => "rectangle",
+                _ => "line",
+            }
+        ))),
+    };
+    match request.shape {
+        Drawing::Circle => {
+            let radius = request.radius.unwrap_or(DEFAULT_RADIUS);
+            if radius <= 0 {
+                return Err(PtError::InvalidInput(format!(
+                    "radius must be positive, got {radius}"
+                )));
+            }
+            Ok((
+                pktfile::ShapeKind::Ellipse,
+                (request.x - radius, request.y - radius),
+                (request.x + radius, request.y + radius),
+            ))
+        }
+        Drawing::Rectangle => {
+            let (to_x, to_y) = corner()?;
+            Ok((
+                pktfile::ShapeKind::Rectangle,
+                (request.x.min(to_x), request.y.min(to_y)),
+                (request.x.max(to_x), request.y.max(to_y)),
+            ))
+        }
+        Drawing::Line => Ok((pktfile::ShapeKind::Line, (request.x, request.y), corner()?)),
+    }
+}
+
+fn rgb((red, green, blue): (i32, i32, i32)) -> pktfile::Rgb {
+    let channel = |value: i32| u8::try_from(value.clamp(0, 255)).unwrap_or(u8::MAX);
+    pktfile::Rgb {
+        red: channel(red),
+        green: channel(green),
+        blue: channel(blue),
+    }
 }
 
 pub async fn list_drawings<P: PacketTracer>(packet_tracer: &P) -> Result<DrawingList, PtError> {
     let mut drawings = Vec::new();
     for (shape, method) in [
         (Drawing::Circle, "getCanvasEllipseIds"),
+        (Drawing::Rectangle, "getCanvasRectIds"),
         (Drawing::Line, "getCanvasLineIds"),
     ] {
         let ids = packet_tracer
@@ -172,21 +228,6 @@ async fn position<P: PacketTracer>(packet_tracer: &P, id: &str) -> Result<(i64, 
         x.as_i64().unwrap_or_default(),
         y.as_i64().unwrap_or_default(),
     ))
-}
-
-/// The z order Packet Tracer hands out for the next drawing, so shapes stack in order.
-async fn layer<P: PacketTracer>(packet_tracer: &P) -> Result<f64, PtError> {
-    let layer = packet_tracer
-        .call(logical_workspace().method("getIncNoteZOrder", []))
-        .await?;
-    match layer {
-        Value::Double(layer) => Ok(layer),
-        Value::Float(layer) => Ok(f64::from(layer)),
-        Value::Int(layer) => Ok(f64::from(layer)),
-        other => Err(PtError::UnexpectedReply(format!(
-            "the drawing layer should be a number, got {other:?}"
-        ))),
-    }
 }
 
 fn colour(name: Option<&str>) -> Result<(i32, i32, i32), PtError> {
