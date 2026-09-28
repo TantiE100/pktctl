@@ -224,7 +224,7 @@ pktctl reads its settings from environment variables:
 |---|---|---|---|
 | `PKTCTL_APP_ID` | yes | | App id registered in Packet Tracer. |
 | `PKTCTL_SECRET` | yes | | Shared secret registered in Packet Tracer. |
-| `PKTCTL_ADDR` | no | `127.0.0.1:39000` | Address of Packet Tracer's IPC listener. |
+| `PKTCTL_ADDR` | no | ports 39000 to 39009 on this computer | Address of Packet Tracer's IPC listener. Without it, pktctl finds Packet Tracer on the first of those ports where it accepts the credentials; with it, pktctl uses that address only. |
 | `PKTCTL_CALL_TIMEOUT_SECS` | no | `30` | Time limit for a single IPC call. |
 | `PKTCTL_PT_HOME` | no | usual install folders | Packet Tracer installation, used by `setup_exapp`. |
 | `PKTCTL_SETUP_DIR` | no | `~/.config/pktctl` | Where `setup_exapp` writes the registration file. |
@@ -234,7 +234,7 @@ pktctl reads its settings from environment variables:
 
 | What `status` reports | Cause and fix |
 |---|---|
-| `Packet Tracer is not reachable` | Packet Tracer is closed, or its IPC listener uses another port; after a restart it has been seen on 39001. Check the port in **Extensions → IPC → Options** and set `PKTCTL_ADDR` to match, or restart Packet Tracer. |
+| `Packet Tracer is not reachable` | Packet Tracer is closed, or it listens outside ports 39000 to 39009. When 39000 is still taken, for example right after a crash, Packet Tracer moves to 39001; pktctl follows it on its own, and `status` shows the port in `addr`. For any other port, check **Extensions → IPC → Options** and set `PKTCTL_ADDR`. |
 | `rejected app id ...` | pktctl is not registered, or `PKTCTL_SECRET` differs from the registered key. Run `setup_exapp`, register the new file and quit Packet Tracer normally once. |
 | `does not have the necessary privilege` | pktctl was registered with an older template. Register the file `setup_exapp` creates again. |
 

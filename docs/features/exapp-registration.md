@@ -100,7 +100,7 @@ In Packet Tracer: **Extensions → IPC → Configure Apps → Add**, pick
 |---|---|
 | `PKTCTL_APP_ID` | the `ID` from the XML |
 | `PKTCTL_SECRET` | the `KEY` from the XML |
-| `PKTCTL_ADDR` | optional, defaults to `127.0.0.1:39000` |
+| `PKTCTL_ADDR` | optional; without it pktctl looks for Packet Tracer on `127.0.0.1`, ports 39000 to 39009 |
 | `PKTCTL_CALL_TIMEOUT_SECS` | optional, defaults to 30 |
 | `PKTCTL_PT_HOME` | optional, Packet Tracer install folder for `setup_exapp` |
 | `PKTCTL_SETUP_DIR` | optional, where `setup_exapp` writes the `.pta` (default `~/.config/pktctl`) |
@@ -111,7 +111,7 @@ Call the `status` tool: `connected: true` means everything works.
 
 | `status.problem` | Cause |
 |---|---|
-| `Packet Tracer is not reachable` | Packet Tracer is closed, or IPC listens on another port (**Extensions → IPC → Options**). |
+| `Packet Tracer is not reachable` | Packet Tracer is closed, or IPC listens outside ports 39000 to 39009 (**Extensions → IPC → Options**); set `PKTCTL_ADDR` to that address. |
 | `rejected app id ...` | The ExApp is not registered, or `PKTCTL_SECRET` differs from the `KEY`. Run `setup_exapp` and register the file it creates. If it worked before a restart, Packet Tracer did not quit normally after registering; register again and quit it normally once. |
 | `does not have the necessary privilege` | The ExApp was registered with fewer privileges; register the current template again. |
 

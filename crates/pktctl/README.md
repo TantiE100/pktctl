@@ -22,7 +22,7 @@ MCP over stdio and talks to Packet Tracer through [`ptmp`](../ptmp/README.md).
 |---|---|---|
 | `PKTCTL_APP_ID` | yes | |
 | `PKTCTL_SECRET` | yes | |
-| `PKTCTL_ADDR` | no | `127.0.0.1:39000` |
+| `PKTCTL_ADDR` | no | searched on `127.0.0.1`, ports 39000 to 39009 |
 | `PKTCTL_CALL_TIMEOUT_SECS` | no | `30` |
 | `PKTCTL_PT_HOME` | no | searched in the usual install folders |
 | `PKTCTL_SETUP_DIR` | no | `~/.config/pktctl` |

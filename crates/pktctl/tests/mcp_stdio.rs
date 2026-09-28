@@ -738,11 +738,17 @@ async fn advertises_every_feature_tool_with_schemas() {
 
 #[tokio::test]
 async fn status_reports_live_counts() {
-    let (_pt, mut client) = client_with_network().await;
+    let (pt, mut client) = client_with_network().await;
     let result = client.call_tool("status", json!({})).await;
     assert_eq!(
         result["structuredContent"],
-        json!({ "connected": true, "pt_version": FAKE_PT_VERSION, "devices": 2, "links": 1 })
+        json!({
+            "connected": true,
+            "addr": pt.addr().to_string(),
+            "pt_version": FAKE_PT_VERSION,
+            "devices": 2,
+            "links": 1
+        })
     );
 }
 

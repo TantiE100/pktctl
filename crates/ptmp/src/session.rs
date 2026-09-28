@@ -11,7 +11,7 @@ use std::{
 use futures::{SinkExt, StreamExt, stream::SplitStream};
 use tokio::{
     net::TcpStream,
-    sync::{broadcast, mpsc, oneshot},
+    sync::{Notify, broadcast, mpsc, oneshot},
     time::timeout,
 };
 use tokio_util::codec::Framed;
@@ -83,6 +83,10 @@ struct Shared {
     next_id: AtomicU32,
     events: broadcast::Sender<Event>,
     closed: AtomicBool,
+    /// Wakes the writer when the connection is gone, so it drops its half of the socket.
+    /// Without it the writer waits on `outbound` forever and the socket is never closed,
+    /// which also keeps Packet Tracer's port busy after it crashes.
+    stopped: Notify,
     pt_version: Option<String>,
     call_timeout: Duration,
 }
@@ -180,6 +184,7 @@ impl Session {
             next_id: AtomicU32::new(1),
             events: broadcast::channel(EVENT_BUFFER).0,
             closed: AtomicBool::new(false),
+            stopped: Notify::new(),
             pt_version: negotiation.pt_version().map(str::to_owned),
             call_timeout,
         });
@@ -211,6 +216,7 @@ impl Shared {
         for (_, reply) in self.pending().drain() {
             let _ = reply.send(Err(Error::Closed));
         }
+        self.stopped.notify_one();
     }
 }
 
@@ -286,7 +292,12 @@ async fn write_loop(
     mut queue: mpsc::UnboundedReceiver<Message>,
     shared: Arc<Shared>,
 ) {
-    while let Some(message) = queue.recv().await {
+    loop {
+        let message = tokio::select! {
+            message = queue.recv() => message,
+            () = shared.stopped.notified() => None,
+        };
+        let Some(message) = message else { break };
         let is_disconnect = matches!(message, Message::Disconnect { .. });
         let frame = match message.to_frame() {
             Ok(frame) => frame,
