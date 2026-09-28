@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F2A33A" alt="MIT license"></a>
+  <a href="https://crates.io/crates/pktctl"><img src="https://img.shields.io/crates/v/pktctl?color=2A2F37" alt="pktctl on crates.io"></a>
   <img src="https://img.shields.io/badge/rust-1.88%2B-2A2F37" alt="Rust 1.88 or newer">
   <img src="https://img.shields.io/badge/Packet%20Tracer-9.0.1-2A2F37" alt="Packet Tracer 9.0.1">
 </p>
@@ -111,11 +112,21 @@ workflow. macOS quarantines binaries downloaded with a browser; clear the flag
 with `xattr -d com.apple.quarantine pktctl`, or download with `curl`, which does
 not set it. The binaries are not notarized by Apple.
 
-**From source.** With Rust 1.88 or newer:
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), the same
+prebuilt archive is fetched and installed in one step:
 
 ```bash
-cargo install --git https://github.com/TantiE100/pktctl pktctl --locked
+cargo binstall pktctl
 ```
+
+**From source.** With Rust 1.88 or newer, from [crates.io](https://crates.io/crates/pktctl):
+
+```bash
+cargo install pktctl --locked
+```
+
+The development version on `main`:
+`cargo install --git https://github.com/TantiE100/pktctl pktctl --locked`.
 
 Cargo builds pktctl and places it in `~/.cargo/bin/pktctl`
 (`%USERPROFILE%\.cargo\bin\pktctl.exe` on Windows). To build from a clone
