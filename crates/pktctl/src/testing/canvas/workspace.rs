@@ -9,6 +9,8 @@ use super::{
 };
 
 const WORKSPACE: &str = "LogicalWorkspace";
+/// The one folder the canvas reports as missing, so tests can reach that error.
+pub const MISSING_FOLDER: &str = "missing";
 const APP_WINDOW: &str = "AppWindow";
 const STRAIGHT: i32 = 8100;
 const CROSS: i32 = 8101;
@@ -80,6 +82,7 @@ pub(super) fn handle(state: &mut State, steps: &[Step]) -> Result<Value, Remote>
         ["fileNew"] => {
             check_args(&steps[0], APP_WINDOW, &[TypeCode::Bool])?;
             state.restore(Network::default());
+            state.drawings.clear();
             state.current_file.clear();
             state.activity = None;
             Ok(Value::Bool(true))
@@ -126,6 +129,9 @@ pub(super) fn files(state: &State, steps: &[Step]) -> Result<Value, Remote> {
     let exists = state.files.contains_key(path);
     match step.method.as_str() {
         "fileExists" => Ok(Value::Bool(exists || std::path::Path::new(path).is_file())),
+        "directoryExists" => Ok(Value::Bool(
+            std::path::Path::new(path).file_name() != Some(std::ffi::OsStr::new(MISSING_FOLDER)),
+        )),
         "getFileSize" => Ok(Value::Int(if exists { 4096 } else { -1 })),
         other => Err(Remote::unknown_method(CLASS, other)),
     }
@@ -184,6 +190,7 @@ fn logical(state: &mut State, step: &Step) -> Result<Value, Remote> {
         "drawCircle"
         | "drawLine"
         | "getCanvasEllipseIds"
+        | "getCanvasRectIds"
         | "getCanvasLineIds"
         | "getCanvasItemX"
         | "getCanvasItemY" => drawings(state, step),
@@ -258,22 +265,51 @@ fn drawings(state: &mut State, step: &Step) -> Result<Value, Remote> {
             check_args(step, WORKSPACE, types)?;
             state.next_note += 1;
             let id = format!("{{00000000-0000-0000-0001-{:012}}}", state.next_note);
+            let (x, y) = (int(&step.args[0]), int(&step.args[1]));
+            let shape = if circle {
+                let radius = int(&step.args[3]);
+                pktfile::Shape {
+                    kind: pktfile::ShapeKind::Ellipse,
+                    start: (x - radius, y - radius),
+                    end: (x + radius, y + radius),
+                    outline: pktfile::Rgb {
+                        red: 0,
+                        green: 0,
+                        blue: 0,
+                    },
+                    fill: None,
+                }
+            } else {
+                pktfile::Shape {
+                    kind: pktfile::ShapeKind::Line,
+                    start: (x, y),
+                    end: (int(&step.args[2]), int(&step.args[3])),
+                    outline: pktfile::Rgb {
+                        red: 0,
+                        green: 0,
+                        blue: 0,
+                    },
+                    fill: None,
+                }
+            };
             state.drawings.push(CanvasDrawing {
                 id: id.clone(),
-                circle,
-                x: int(&step.args[0]),
-                y: int(&step.args[1]),
+                shape,
             });
             Ok(Value::Uuid(id))
         }
-        "getCanvasEllipseIds" | "getCanvasLineIds" => {
-            let circle = step.method == "getCanvasEllipseIds";
+        "getCanvasEllipseIds" | "getCanvasRectIds" | "getCanvasLineIds" => {
+            let kind = match step.method.as_str() {
+                "getCanvasEllipseIds" => pktfile::ShapeKind::Ellipse,
+                "getCanvasRectIds" => pktfile::ShapeKind::Rectangle,
+                _ => pktfile::ShapeKind::Line,
+            };
             Ok(Value::Vector {
                 element: TypeCode::Uuid,
                 items: state
                     .drawings
                     .iter()
-                    .filter(|drawing| drawing.circle == circle)
+                    .filter(|drawing| drawing.shape.kind == kind)
                     .map(|drawing| Value::Uuid(drawing.id.clone()))
                     .collect(),
             })
@@ -286,10 +322,11 @@ fn drawings(state: &mut State, step: &Step) -> Result<Value, Remote> {
                 .iter()
                 .find(|drawing| drawing.id == id)
                 .ok_or_else(|| Remote::missing("CanvasItem"))?;
+            let (x, y) = drawing.centre();
             Ok(Value::Int(if step.method == "getCanvasItemX" {
-                drawing.x
+                x
             } else {
-                drawing.y
+                y
             }))
         }
         other => Err(Remote::unknown_method(WORKSPACE, other)),

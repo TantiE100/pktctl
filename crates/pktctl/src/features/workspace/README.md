@@ -1,6 +1,6 @@
 # workspace
 
-Files, screenshots and canvas notes.
+Files, screenshots, canvas notes and drawings.
 
 ## Tools
 
@@ -10,8 +10,9 @@ Files, screenshots and canvas notes.
 | `open_network` | absolute `path`, optional `save_current_to` | `{ path, devices }` |
 | `new_network` | optional `save_current_to` | `{ cleared: true }` |
 | `screenshot` | optional absolute `save_to` (`.png`) | the PNG as MCP image content |
-| `draw` | Draws a circle or a line on the canvas, in a named colour or `#rrggbb`. |
-| `list_drawings`, `remove_drawing` | The circles and lines on the canvas, and how to take one back. |
+| `draw` | `shape` (`circle`, `rectangle`, `line`), `x`, `y`, `radius` or `to_x`/`to_y`, optional `color` and `fill` | `{ id, shape, color, fill?, file }` |
+| `list_drawings` | none | circles, rectangles and lines with ids and centres |
+| `remove_drawing` | `id` | `{ removed: id }` |
 | `add_note` | `x`, `y`, `text` | the note with its id |
 | `list_notes` | optional `include_port_labels` | notes with ids and positions |
 | `remove_note` | `id` | `{ removed: id }` |
@@ -58,6 +59,35 @@ the Screen Recording permission (System Settings > Privacy & Security); the
 error says so if it is missing. The capture waits 0.8 seconds after switching
 views so Packet Tracer can redraw, and the view you had is restored afterwards.
 
+## Drawings go through the file
+
+Packet Tracer's own IPC calls cannot draw reliably. Verified on Packet Tracer
+9.0.1, in its binary and live:
+
+- `drawCircle(cx, cy, layer, radius, r, g, b)` passes `(cx, cy)` to
+  `drawEllipse` as the top left corner and `(cx + radius/√2, cy + radius/√2)`
+  as the bottom right one: the circle comes out about 0.7 times the requested
+  radius across, below and to the right of the centre asked for.
+- Both `drawCircle` and `drawLine` map their points with
+  `QGraphicsView::mapToScene`, so they read window pixels: the result moves with
+  the view's scroll and zoom.
+- `drawCircle` sends the colour as the fill, with filling off, and leaves the
+  outline colour empty; the ellipse paints its outline black and 1 px wide. The
+  10 px pen it sets afterwards is never used for painting.
+- The drawing palette the GUI opens is only read when drawing with the mouse;
+  the IPC path skips it, and `getPaletteDialog()` has no colour setters.
+
+`draw` therefore writes the shape into the network file, where Packet Tracer
+stores `<ELLIPSE>`, `<RECTANGLE>` and `<LINE>` elements with their exact
+corners, outline colour (`OUTLINECOLOR`), fill colour and fill flag, and opens a
+temporary copy (see `network_file::edit_saved_network`). The file format has no
+line width, so lines are always 1 px. Drawings land in the root cluster.
+
+`list_drawings` reads ids with `getCanvasEllipseIds`, `getCanvasRectIds` and
+`getCanvasLineIds`; for drawings, `getCanvasItemX/Y` return the centre, while
+`getCanvasItemRealX/Y` return 0. `get*ItemData` are never called: they crash
+Packet Tracer (see [ipc](../ipc/README.md#calls-pktctl-refuses)).
+
 ## Notes and port labels
 
 With "show port labels" on, Packet Tracer draws each cable end's port name
@@ -71,13 +101,14 @@ coordinates.
 
 | Purpose | Call |
 |---|---|
-| save | `appWindow().fileSaveAsNoPrompt(path: QString, async: bool)` |
+| save | `systemFileManager().directoryExists(folder: QString)` first, since a missing folder makes Packet Tracer show a blocking dialog; then `appWindow().fileSaveAsNoPrompt(path: QString, async: bool)` |
 | verify | `systemFileManager().fileExists(path: QString)`, `getFileSize(path: QString)` |
 | current file | `appWindow().getActiveFile().getSavedFilename()` |
 | new | `appWindow().fileNew(confirm: bool)` with `false` |
 | open | `appWindow().fileOpen(path: QString)` returns a `FileOpenReturnValue` code, 0 on success |
 | screenshot | `...getLogicalWorkspace().getWorkspaceImage(format: QString)` returns raw PNG bytes |
 | notes | `...getLogicalWorkspace().getIncNoteZOrder()`, `addNote(x: int, y: int, layer: double, text: QString)`, `getCanvasNoteIds()`, `getCanvasNoteText(id: uuid)`, `getCanvasItemRealX/Y(id: uuid)`, `removeCanvasItem(id: uuid)` |
+| drawings | `appWindow().fileSaveToBytes()`, then `fileOpen` on the edited copy; `...getLogicalWorkspace().getCanvasEllipseIds()`, `getCanvasRectIds()`, `getCanvasLineIds()`, `getCanvasItemX/Y(id: uuid)`, `removeCanvasItem(id: uuid)` |
 
 File operations need the `FILE` privilege, which pktctl's ExApp template
 grants; see [ExApp registration](../../../../../docs/features/exapp-registration.md).

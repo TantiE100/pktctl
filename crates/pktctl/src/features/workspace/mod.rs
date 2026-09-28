@@ -111,9 +111,12 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "draw",
-        description = "Draw on the logical canvas: a `circle` around a subnet or group, or a \
-                       `line` to mark a boundary, in the colour you name (`red`, `blue`, \
-                       `green`, ... or `#rrggbb`). Returns the drawing's id, which \
+        description = "Draw on the logical canvas: a `circle` (centre and radius) around a \
+                       subnet or group, a `rectangle` (two corners) to frame an area, or a \
+                       `line` to mark a boundary. `color` is the outline (`red`, `blue`, \
+                       `green`, ... or `#rrggbb`); `fill` fills circles and rectangles. The \
+                       drawing is written into the network file, which Packet Tracer reopens \
+                       from a temporary copy; save with a path to keep it. Returns the id \
                        `remove_drawing` takes.",
         annotations(
             read_only_hint = false,
@@ -133,8 +136,8 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "list_drawings",
-        description = "List the circles and lines drawn on the logical canvas with their ids \
-                       and positions.",
+        description = "List the circles, rectangles and lines drawn on the logical canvas \
+                       with their ids and centres.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn list_drawings_tool(&self) -> Result<Json<DrawingList>, String> {
@@ -146,7 +149,7 @@ impl<P: PacketTracer> PktctlServer<P> {
 
     #[tool(
         name = "remove_drawing",
-        description = "Remove a circle or line from the logical canvas by id.",
+        description = "Remove a circle, rectangle or line from the logical canvas by id.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -233,7 +236,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn draws_circles_and_lines_and_takes_them_back() {
+    async fn draws_circles_rectangles_and_lines_and_takes_them_back() {
         let (_canvas, packet_tracer) = canvas();
         let circle = draw(
             &packet_tracer,
@@ -249,6 +252,31 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(circle.color, "#28963c");
+        assert_eq!(circle.fill, None);
+        assert!(
+            std::path::Path::new(&circle.file)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("pkt")),
+            "{}",
+            circle.file
+        );
+
+        let rectangle = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Rectangle,
+                x: 700,
+                y: 500,
+                to_x: Some(500),
+                to_y: Some(300),
+                color: Some("black".into()),
+                fill: Some("#F2A33A".into()),
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(rectangle.fill.as_deref(), Some("#f2a33a"));
 
         let line = draw(
             &packet_tracer,
@@ -267,32 +295,21 @@ mod tests {
         assert_eq!(line.color, "#ff8800");
 
         let drawings = list_drawings(&packet_tracer).await.unwrap().drawings;
-        assert_eq!(drawings.len(), 2);
-        assert_eq!(
+        assert_eq!(drawings.len(), 3);
+        let at = |id: &str| {
             drawings
                 .iter()
-                .find(|item| item.id == circle.id)
-                .map(|item| (item.shape, item.x, item.y)),
-            Some((Drawing::Circle, 250, 400))
-        );
-
-        let missing_ends = draw(
-            &packet_tracer,
-            &DrawRequest {
-                shape: Drawing::Line,
-                x: 10,
-                y: 10,
-                ..DrawRequest::default()
-            },
-        )
-        .await
-        .unwrap_err();
-        assert!(missing_ends.to_string().contains("to_x"), "{missing_ends}");
+                .find(|item| item.id == id)
+                .map(|item| (item.shape, item.x, item.y))
+        };
+        assert_eq!(at(&circle.id), Some((Drawing::Circle, 250, 400)));
+        assert_eq!(at(&rectangle.id), Some((Drawing::Rectangle, 600, 400)));
+        assert_eq!(at(&line.id), Some((Drawing::Line, 350, 100)));
 
         remove_drawing(&packet_tracer, &circle.id).await.unwrap();
         assert_eq!(
             list_drawings(&packet_tracer).await.unwrap().drawings.len(),
-            1
+            2
         );
         let gone = remove_drawing(&packet_tracer, &circle.id)
             .await
@@ -326,6 +343,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refuses_drawings_it_cannot_make() {
+        let (_canvas, packet_tracer) = canvas();
+        let missing_ends = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Line,
+                x: 10,
+                y: 10,
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(missing_ends.to_string().contains("to_x"), "{missing_ends}");
+        let filled_line = draw(
+            &packet_tracer,
+            &DrawRequest {
+                shape: Drawing::Line,
+                x: 10,
+                y: 10,
+                to_x: Some(20),
+                to_y: Some(20),
+                fill: Some("red".into()),
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            filled_line.to_string().contains("cannot be filled"),
+            "{filled_line}"
+        );
+        let flat = draw(
+            &packet_tracer,
+            &DrawRequest {
+                radius: Some(0),
+                ..DrawRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(flat.to_string().contains("radius"), "{flat}");
+        assert!(
+            list_drawings(&packet_tracer)
+                .await
+                .unwrap()
+                .drawings
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
     async fn saves_opens_and_clears_without_dialogs() {
         let (_canvas, packet_tracer) = canvas();
         add_router(&packet_tracer, "R1").await;
@@ -355,6 +424,19 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(opened.devices, 2);
+    }
+
+    #[tokio::test]
+    async fn refuses_to_save_into_a_missing_folder() {
+        let (_canvas, packet_tracer) = canvas();
+        let error = save(
+            &packet_tracer,
+            &save_request(Some(&absolute("/missing/lab.pkt"))),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, PtError::InvalidInput(_)), "{error}");
+        assert!(error.to_string().contains("does not exist"), "{error}");
     }
 
     #[tokio::test]

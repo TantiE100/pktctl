@@ -81,6 +81,16 @@ With no argument it returns the roots and totals: 346 classes, 3111 methods and
 Methods that only exist inside the Java client (`getFactory`,
 `getAccessMessage`, `getPacketTracerSession`) are left out.
 
+
+## Calls pktctl refuses
+
+A few methods crash Packet Tracer 9.0.1 instead of answering, taking the user's
+unsaved work with it. `call_ipc` refuses them with an explanation:
+
+| Method | Why |
+|---|---|
+| `LogicalWorkspace.getEllipseItemData`, `getRectItemData`, `getLineItemData`, `getPolygonItemData` | `getShapeItemData` reads the shape's name label through `CCanvasNote::getOriginalText`, and drawings made through IPC or files have none: SIGSEGV. Crash reports confirm it for ellipses and rectangles; lines and polygons share the path. `list_drawings` gives ids, kinds and centres instead. |
+
 ## Where the index comes from
 
 `crates/pktctl/assets/ipc-index.json` is generated from the framework jar and

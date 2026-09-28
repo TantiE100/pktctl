@@ -137,6 +137,21 @@ async fn save_current<P: PacketTracer>(
 }
 
 async fn save_to<P: PacketTracer>(packet_tracer: &P, path: &str) -> Result<Saved, PtError> {
+    if let Some(folder) = Path::new(path)
+        .parent()
+        .map(|folder| folder.display().to_string())
+        .filter(|folder| !folder.is_empty())
+    {
+        let exists = packet_tracer
+            .call(system_files().method("directoryExists", [Value::qstring(&folder)]))
+            .await?;
+        if !expect_bool(&exists, "directoryExists result")? {
+            return Err(PtError::InvalidInput(format!(
+                "the folder `{folder}` does not exist; create it first. Packet Tracer would \
+                 answer with a dialog that blocks it until someone clicks OK"
+            )));
+        }
+    }
     packet_tracer
         .call(app_window().method(
             "fileSaveAsNoPrompt",

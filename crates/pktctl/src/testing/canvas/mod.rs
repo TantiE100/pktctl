@@ -142,9 +142,14 @@ struct Link {
 #[derive(Debug, Clone)]
 pub(super) struct CanvasDrawing {
     pub(super) id: String,
-    pub(super) circle: bool,
-    pub(super) x: i32,
-    pub(super) y: i32,
+    pub(super) shape: pktfile::Shape,
+}
+
+impl CanvasDrawing {
+    pub(super) fn centre(&self) -> (i32, i32) {
+        let pktfile::Shape { start, end, .. } = self.shape;
+        (i32::midpoint(start.0, end.0), i32::midpoint(start.1, end.1))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -208,14 +213,25 @@ impl State {
                 "<DEVICE><ENGINE><NAME translate=\"true\">{name}</NAME>{wireless}</ENGINE></DEVICE>"
             );
         }
-        format!(
-            "<PACKETTRACER5><VERSION>9.0.1.0858</VERSION><NETWORK><DEVICES>{devices}</DEVICES></NETWORK>{}</PACKETTRACER5>",
+        let document = format!(
+            "<PACKETTRACER5><VERSION>9.0.1.0858</VERSION><NETWORK><DEVICES>{devices}</DEVICES></NETWORK>{}<CLUSTERS><ROOTCLUSTER><CLUSTERID>1-1</CLUSTERID></ROOTCLUSTER></CLUSTERS><LINES/><RECTANGLES/><ELLIPSES/><POLYGONS/></PACKETTRACER5>",
             self.physical.workspace_xml()
-        )
+        );
+        self.drawings.iter().fold(document, |xml, drawing| {
+            pktfile::add_shape_with_id(&xml, &drawing.shape, &drawing.id)
+                .expect("canvas drawings fit the document")
+        })
     }
 
     fn load_document(&mut self, xml: &str) -> Result<(), pktfile::PktError> {
         self.physical = physical::Physical::from_nodes(&pktfile::physical_nodes(xml)?);
+        self.drawings = pktfile::shapes(xml)?
+            .into_iter()
+            .map(|found| CanvasDrawing {
+                id: found.uuid,
+                shape: found.shape,
+            })
+            .collect();
         for device in &mut self.devices {
             if let Some(client) = device.client.as_mut()
                 && let Ok(profile) = pktfile::client_profile(xml, &device.name)

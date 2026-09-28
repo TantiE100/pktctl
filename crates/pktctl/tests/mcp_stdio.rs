@@ -474,6 +474,29 @@ async fn saves_reopens_and_captures_the_workspace_end_to_end() {
             .len(),
         1
     );
+
+    let ring = client
+        .call_tool(
+            "draw",
+            json!({ "shape": "circle", "x": 300, "y": 200, "radius": 80, "color": "#F2A33A" }),
+        )
+        .await;
+    assert_eq!(ring["structuredContent"]["color"], "#f2a33a");
+    let frame = client
+        .call_tool(
+            "draw",
+            json!({ "shape": "rectangle", "x": 100, "y": 100, "to_x": 500, "to_y": 300, "fill": "gray" }),
+        )
+        .await;
+    assert_eq!(frame["structuredContent"]["fill"], "#808080");
+    let drawings = client.call_tool("list_drawings", json!({})).await;
+    assert_eq!(
+        drawings["structuredContent"]["drawings"],
+        json!([
+            { "id": ring["structuredContent"]["id"], "shape": "circle", "x": 300, "y": 200 },
+            { "id": frame["structuredContent"]["id"], "shape": "rectangle", "x": 300, "y": 200 }
+        ])
+    );
 }
 
 #[cfg(unix)]

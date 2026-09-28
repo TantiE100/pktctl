@@ -14,6 +14,14 @@ use crate::packet_tracer::{
 
 const OBJECT_ROOT: &str = "getObjectByUuid";
 const BASE_CLASS: &str = "IPCObject";
+/// Methods that crash Packet Tracer 9.0.1 instead of answering: reading a drawing's shape
+/// data dereferences the name label drawings made through IPC or files do not have.
+const CRASHES_PACKET_TRACER: &[(&str, &str)] = &[
+    ("LogicalWorkspace", "getEllipseItemData"),
+    ("LogicalWorkspace", "getRectItemData"),
+    ("LogicalWorkspace", "getLineItemData"),
+    ("LogicalWorkspace", "getPolygonItemData"),
+];
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct IpcStep {
@@ -135,6 +143,16 @@ async fn apply<P: PacketTracer>(
     }
     if candidates.is_empty() {
         return Err(unknown_method(api, &class, &step.method));
+    }
+    if let Some((owner, _)) = candidates
+        .iter()
+        .find(|(owner, method)| CRASHES_PACKET_TRACER.contains(&(*owner, method.name.as_str())))
+    {
+        return Err(PtError::InvalidInput(format!(
+            "`{owner}.{}` makes Packet Tracer 9.0.1 crash, so pktctl does not send it; \
+             list_drawings gives the ids, kinds and centres of the drawings",
+            step.method
+        )));
     }
 
     let mut problems = Vec::new();
