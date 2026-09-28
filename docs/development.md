@@ -122,11 +122,22 @@ The three crates share one version, set in `[workspace.package]`. A tag
    Linux (x86_64 and ARM64) and Windows, checks that each binary starts,
    attests every archive's provenance, and publishes a GitHub release with the
    archives, `SHA256SUMS` and the CHANGELOG section as notes.
-4. Publish the crates from the tagged commit, in dependency order: `ptmp`, then
-   `pktfile`, then `pktctl` (`cargo publish -p <crate>`, after a
-   `--dry-run`). Check first with `cargo package -p <crate> --list` that
-   nothing from a Packet Tracer installation slipped into the package. The
-   crates.io account needs a verified email address.
+   After the GitHub release, the `crates.io` job publishes `ptmp`, `pktfile`
+   and `pktctl` (`tools/release/release.sh publish-crates`), skipping any
+   crate crates.io already has at that version, so rerunning the job is safe.
+   It authenticates with crates.io trusted publishing: each crate trusts
+   `TantiE100/pktctl`, workflow `release.yml`, and the job exchanges the
+   workflow's OIDC identity for a token that lasts 30 minutes. No token is
+   stored in the repository. On pull requests the job only packages and
+   verifies the crates (`publish-crates --dry-run`).
+4. Before a release adds files to a crate, check with
+   `cargo package -p <crate> --list` that nothing from a Packet Tracer
+   installation slipped into the package.
+
+The very first version of a crate cannot be published through trusted
+publishing: it needs a token from `cargo login` once, with the crates.io
+account's email verified, and trusted publishing is configured on the crate
+after it exists. 0.2.0 went out that way.
 
 `tools/release/release.sh` holds the steps the workflow runs (`version`,
 `check-tag`, `notes`, `package`), so they can be tried locally. Pull requests

@@ -5,6 +5,9 @@
 #   release.sh check-tag vX.Y.Z     fail unless the tag matches that version
 #   release.sh notes X.Y.Z          print the CHANGELOG section of that version
 #   release.sh package TARGET DIR   archive target/TARGET/release/pktctl with the docs into DIR
+#   release.sh publish-crates [--dry-run]
+#                                   publish ptmp, pktfile and pktctl at the workspace version,
+#                                   skipping those crates.io already has
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -60,6 +63,34 @@ package() {
     rm -rf "$stage"
 }
 
+published_on_crates_io() {
+    local crate="$1" version="$2" code
+    code="$(curl -s -o /dev/null -w '%{http_code}' \
+        -A 'pktctl-release (https://github.com/TantiE100/pktctl)' \
+        "https://crates.io/api/v1/crates/$crate/$version")"
+    [[ "$code" == 200 ]]
+}
+
+publish_crates() {
+    local version pending=() crate
+    version="$(version)"
+    for crate in ptmp pktfile pktctl; do
+        if published_on_crates_io "$crate" "$version"; then
+            echo "$crate $version is already on crates.io"
+        else
+            pending+=(-p "$crate")
+        fi
+    done
+    if ((${#pending[@]} == 0)); then
+        return
+    fi
+    if [[ "${1:-}" == "--dry-run" ]]; then
+        (cd "$root" && cargo publish --workspace --locked --dry-run --allow-dirty)
+    else
+        (cd "$root" && cargo publish --locked "${pending[@]}")
+    fi
+}
+
 case "${1:-}" in
     version) version ;;
     check-tag) check_tag "$2" ;;
@@ -68,5 +99,6 @@ case "${1:-}" in
         mkdir -p "$3"
         package "$2" "$(cd "$3" && pwd)"
         ;;
-    *) sed -n '2,8p' "$0" >&2; exit 2 ;;
+    publish-crates) publish_crates "${2:-}" ;;
+    *) sed -n '2,11p' "$0" >&2; exit 2 ;;
 esac

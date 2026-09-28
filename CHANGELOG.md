@@ -7,6 +7,13 @@ share one version.
 
 ## Unreleased
 
+### Added
+
+- Releases also publish `ptmp`, `pktfile` and `pktctl` to crates.io, through
+  crates.io trusted publishing: no token is stored, and a crate already
+  published at the version is skipped. Pull requests that touch the release
+  machinery package and verify the three crates without uploading them.
+
 ## 0.2.0 - 2026-09-27
 
 ### Added
